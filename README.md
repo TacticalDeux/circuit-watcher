@@ -16,7 +16,7 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 #### TODO
 
 - [x] Queue auto-accept
-- [ ] Terminal timestamps
+- [x] Terminal timestamps (mostly for debugging purposes)
 - [ ] Champ auto-pick
 - [ ] Champ auto-ban
 - [ ] Maybe queue rejoining?

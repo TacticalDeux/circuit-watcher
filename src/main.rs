@@ -1,3 +1,4 @@
+use chrono::prelude::*;
 use futures::SinkExt;
 use futures_util::stream::StreamExt;
 use http::{header::AUTHORIZATION, HeaderValue};
@@ -8,6 +9,25 @@ use std::error::Error;
 use std::io::Write;
 use sysinfo::{self, ProcessExt, System, SystemExt};
 use tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig};
+
+macro_rules! timestamped_println {
+    ($($arg:tt)*) => {
+        {
+            let current_time = Local::now();
+            let formatted_time = current_time.format("[%Y-%m-%d - %H:%M]");
+            println!("{}: {}", formatted_time, format_args!($($arg)*));
+        }
+    }
+}
+macro_rules! timestamped_print {
+    ($($arg:tt)*) => {
+        {
+            let current_time = Local::now();
+            let formatted_time = current_time.format("[%Y-%m-%d - %H:%M]");
+            print!("\r{} {}", formatted_time, format_args!($($arg)*));
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -48,9 +68,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .await
     .unwrap();
-    println!(
+    timestamped_println!(
         "Connected to LoL client's WSS at wss://{}:{} with auth: base64:{}\n",
-        lockfile.address, lockfile.port, lockfile.b64_auth
+        lockfile.address,
+        lockfile.port,
+        lockfile.b64_auth
     );
     let cert = reqwest::Certificate::from_pem(include_bytes!("../riotgames.pem")).unwrap();
     let mut headers = header::HeaderMap::new();
@@ -82,7 +104,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             if event.to_string().contains("\"searchState\":\"Searching\"") {
                 dots_count = (dots_count + 1) % 4;
-                print!("\rSearching for a match");
+                timestamped_print!("Searching for a match");
                 for _ in 0..dots_count {
                     print!(".");
                 }
@@ -99,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 && !found_match
             {
                 found_match = true;
-                println!("\nMatch found, accepting.");
+                timestamped_println!("\nMatch found, accepting.");
                 std::io::stdout().flush().unwrap();
                 rest_client
                     .post(format!(
@@ -109,7 +131,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .send()
                     .await?;
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            }        
+            }
         }
     }
 
@@ -138,7 +160,7 @@ async fn key_listener() {
         };
 
         if end_key == pressed {
-            println!("END key pressed, terminating the program.");
+            timestamped_println!("\nEND key pressed, terminating the program.");
             break;
         }
     }
