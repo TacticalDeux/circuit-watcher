@@ -3,7 +3,7 @@ Auto-accept League of Legends queue (any)
 
 #### BUILDING/DOWNLOADING
 Should be as easy as doing
-```powershell
+```sh
 git clone https://github.com/TacticalDeuce/circuit-watcher.git
 cd circuit-watcher
 cargo build --release
