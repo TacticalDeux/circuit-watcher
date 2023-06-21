@@ -15,7 +15,7 @@ macro_rules! timestamped_println {
         {
             let current_time = Local::now();
             let formatted_time = current_time.format("[%Y-%m-%d - %H:%M]");
-            println!("{}: {}", formatted_time, format_args!($($arg)*));
+            println!("\n{}: {}", formatted_time, format_args!($($arg)*));
         }
     }
 }
@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 && !found_match
             {
                 found_match = true;
-                timestamped_println!("\nMatch found, accepting.");
+                timestamped_println!("Match found, accepting.");
                 std::io::stdout().flush().unwrap();
                 rest_client
                     .post(format!(
@@ -160,7 +160,7 @@ async fn key_listener() {
         };
 
         if end_key == pressed {
-            timestamped_println!("\nEND key pressed, terminating the program.");
+            println!("\nEND key pressed, terminating the program.");
             break;
         }
     }
