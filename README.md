@@ -1,5 +1,8 @@
 # circuit-watcher
-Auto-accept League of Legends queue (any)
+Auto-accept League of Legends queue (any).\
+Small project I've been working on (doesn't even have an icon yet) and plan to update and work on more features.\
+There's also probably a whole lot of better ways to do the stuff I'm doing but there's not much to base the project off of\
+and even less in rust.
 
 #### BUILDING/DOWNLOADING
 Should be as easy as doing
