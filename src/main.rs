@@ -15,7 +15,7 @@ macro_rules! timestamped_println {
         {
             let current_time = Local::now();
             let formatted_time = current_time.format("[%Y-%m-%d - %H:%M]");
-            println!("\n{}: {}", formatted_time, format_args!($($arg)*));
+            println!("\n{} {}", formatted_time, format_args!($($arg)*));
         }
     }
 }
