@@ -332,54 +332,50 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         && pick_completed
                         && !ban_is_in_progress
                         && ban_completed
+                        && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true
+                        && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true
+                        || current_champ_select["timer"]["phase"] == "PLANNING"
                     {
                         continue;
                     }
 
-                    if current_champ_select["timer"]["phase"] == "BAN_PICK" {
-                        if ban_is_in_progress && !ban_completed {
-                            if ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true {
-                                rest_client
-                                    .patch(format!(
-                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, ban_id
-                                ))
-                                    .json(&ban_body)
-                                    .send()
-                                    .await?;
-                                timestamped_println!(
-                                    "Banned champion {} id:{}",
-                                    champ_ban_id.clone().unwrap().1,
-                                    champ_ban_id.clone().unwrap().0
-                                );
-                                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                            }
-                        }
-                        if pick_is_in_progress
-                            && !pick_completed
-                            && !ban_is_in_progress
-                            && ban_completed
-                            && !locked_champ
-                        {
-                            if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
-                                continue;
-                            }
-                            rest_client
-                                .patch(format!(
-                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, pick_id
-                                ))
-                                .json(&pick_body)
-                                .send()
-                                .await?;
-                            timestamped_println!(
-                                "Picked champion {} id:{}",
-                                champ_pick_name,
-                                champ_pick_id
-                            );
-                            locked_champ = true;
-                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                        }
+                    if ban_is_in_progress && !ban_completed {
+                        rest_client
+                            .patch(format!(
+                                "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
+                                lockfile.port, ban_id
+                            ))
+                            .json(&ban_body)
+                            .send()
+                            .await?;
+                        timestamped_println!(
+                            "Banned champion {} id:{}",
+                            champ_ban_id.clone().unwrap().1,
+                            champ_ban_id.clone().unwrap().0
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                    }
+                    if pick_is_in_progress
+                        && !pick_completed
+                        && !ban_is_in_progress
+                        && ban_completed
+                        && !locked_champ
+                    {
+                        rest_client
+                            .patch(format!(
+                                "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
+                                lockfile.port, pick_id
+                            ))
+                            .json(&pick_body)
+                            .send()
+                            .await?;
+                        timestamped_println!(
+                            "Picked champion {} id:{}",
+                            champ_pick_name,
+                            champ_pick_id
+                        );
+                        locked_champ = true;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                     }
                     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
