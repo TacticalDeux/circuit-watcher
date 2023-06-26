@@ -17,7 +17,7 @@ macro_rules! timestamped_println {
         {
             let current_time = Local::now();
             let formatted_time = current_time.format("[%Y-%m-%d - %H:%M]");
-            println!("{}: {}", formatted_time, format_args!($($arg)*));
+            println!("{} {}", formatted_time, format_args!($($arg)*));
         }
     }
 }
@@ -35,6 +35,16 @@ macro_rules! timestamped_print {
 struct Champion {
     id: u32,
     name: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct ResponseData {
+    actorCellId: i32,
+    completed: bool,
+    id: i32,
+    isInProgress: bool,
+    r#type: String,
 }
 
 #[tokio::main]
@@ -231,8 +241,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if champ_pick_ids.len() < 3 {
                     continue;
                 }
-                for (pick_id, pick_name) in &champ_pick_ids {
-                    let mut action_id = 0;
+                for (champ_pick_id, champ_pick_name) in &champ_pick_ids {
                     let current_champ_select: serde_json::Value = rest_client
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/session",
@@ -255,7 +264,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let pick_champ_info: serde_json::Value = rest_client
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                            lockfile.port, pick_id
+                            lockfile.port, champ_pick_id
                         ))
                         .send()
                         .await?
@@ -264,73 +273,115 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     if dodge_check {
                         dodge_check = false;
-                        action_id = 1;
                     }
 
-                    if let Some(arr) = current_champ_select["actions"].as_array() {
-                        for _ in arr {
-                            action_id += 1;
-                        }
-                    }
+                    let action_response: Vec<Vec<ResponseData>> =
+                        serde_json::from_value(current_champ_select["actions"].clone())?;
+
+                    let filtered_data: Vec<ResponseData> = action_response
+                        .iter()
+                        .flatten()
+                        .filter(|data| {
+                            data.actorCellId == current_champ_select["localPlayerCellId"]
+                        })
+                        .take(2) // Limit to a maximum of 2 matches
+                        .cloned()
+                        .collect();
+
+                    let extracted_data: Vec<(i32, bool, String, bool)> = filtered_data
+                        .iter()
+                        .map(|data| {
+                            (
+                                data.id,
+                                data.isInProgress,
+                                data.r#type.clone(),
+                                data.completed,
+                            )
+                        })
+                        .collect();
+
+                    let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_data
+                        .get(0)
+                        .cloned()
+                        .unwrap_or((0, false, "".to_string(), false));
+                    let (pick_id, pick_is_in_progress, _type2, pick_completed) = extracted_data
+                        .get(1)
+                        .cloned()
+                        .unwrap_or((0, false, "".to_string(), false));
 
                     let ban_body = serde_json::json!({
                             "actorCellId": current_champ_select["localPlayerCellId"],
                             "championId": champ_ban_id.clone().unwrap().0,
                             "completed": true,
-                            "id": action_id,
+                            "id": ban_id.clone(),
                             "isAllyAction": true,
                             "type": "ban"
                     });
                     let pick_body = serde_json::json!({
                             "actorCellId": current_champ_select["localPlayerCellId"],
-                            "championId": pick_id,
+                            "championId": champ_pick_id,
                             "completed": true,
-                            "id": action_id,
+                            "id": pick_id.clone(),
                             "isAllyAction": true,
                             "type": "pick"
                     });
-                    // adding [num][0] to unwrap the real values because ["actions"] returns [[{content}]]
-                    // each new action is a new object callable only by index (num)
-                    if current_champ_select["actions"][action_id - 1][0]["actorCellId"]
-                        == current_champ_select["localPlayerCellId"]
-                        && current_champ_select["actions"][action_id - 1][0]["isAllyAction"] == true
-                    {
-                        if current_champ_select["actions"][action_id - 1][0]["type"] == "ban" {
+
+                    if current_champ_select["timer"]["phase"] == "BAN_PICK" {
+                        if ban_is_in_progress && !ban_completed {
                             if ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true {
                                 rest_client
                                     .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, action_id
+                                    lockfile.port, ban_id
                                 ))
                                     .json(&ban_body)
                                     .send()
                                     .await?;
                                 println!(
-                                    "Banned {} id {}",
+                                    "Banned champion {} id:{}",
                                     champ_ban_id.clone().unwrap().1,
                                     champ_ban_id.clone().unwrap().0
                                 );
-                                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                             }
                         }
-                        if current_champ_select["actions"][action_id - 1][0]["type"] == "pick" {
+                        if pick_is_in_progress
+                            && !pick_completed
+                            && !ban_is_in_progress
+                            && ban_completed
+                        {
                             if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
                                 continue;
                             }
                             rest_client
                                 .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, action_id
+                                    lockfile.port, pick_id
                                 ))
                                 .json(&pick_body)
                                 .send()
                                 .await?;
-                            println!("Picked champion {}", pick_name);
+                            println!("Picked champion {} id:{}", champ_pick_name, champ_pick_id);
                             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         }
                     }
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 }
+            }
+            Some("InProgress") => {
+                timestamped_println!("Game in progress...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
+            }
+            Some("WaitingForStats") => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+            Some("PreEndOfGame") => {
+                timestamped_println!("Game in progress...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            }
+            Some("EndOfGame") => {
+                timestamped_println!("Game ending...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
             Some(unimplemented_phase) => {
                 println!("Unimplemented: {}", unimplemented_phase);
@@ -376,7 +427,7 @@ async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
 
         if home_key == pressed {
             pick_ban_selection.store(false, Ordering::SeqCst);
-            println!("Home key pressed.");
+            println!("\nHome key pressed.");
         }
     }
 }
