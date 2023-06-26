@@ -91,6 +91,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut dodge_check = true;
     let mut champ_pick_ids: Vec<(u32, String)> = Vec::new();
     let mut champ_ban_id: Option<(u32, String)> = None;
+    let mut locked_champ = false;
     loop {
         let already_picked = pick_ban_selection.load(Ordering::SeqCst);
         if !already_picked {
@@ -218,6 +219,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 std::io::stdout().flush().unwrap();
                 found_match = false;
                 dodge_check = true;
+                locked_champ = false;
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             }
             Some("Lobby") => {
@@ -326,6 +328,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             "type": "pick"
                     });
 
+                    if !pick_is_in_progress
+                        && pick_completed
+                        && !ban_is_in_progress
+                        && ban_completed
+                    {
+                        continue;
+                    }
+
                     if current_champ_select["timer"]["phase"] == "BAN_PICK" {
                         if ban_is_in_progress && !ban_completed {
                             if ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true {
@@ -349,6 +359,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             && !pick_completed
                             && !ban_is_in_progress
                             && ban_completed
+                            && !locked_champ
                         {
                             if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
                                 continue;
@@ -361,11 +372,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 .json(&pick_body)
                                 .send()
                                 .await?;
-                            timestamped_println!("Picked champion {} id:{}", champ_pick_name, champ_pick_id);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                            timestamped_println!(
+                                "Picked champion {} id:{}",
+                                champ_pick_name,
+                                champ_pick_id
+                            );
+                            locked_champ = true;
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                         }
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
             }
             Some("InProgress") => {
@@ -396,6 +412,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// This Rust function searches for processes matching a given regular expression pattern and returns a
+/// boolean indicating whether any matching processes were found.
+///
+/// Arguments:
+///
+/// * `system`: A mutable reference to a `System` struct, which represents the current system state and
+/// provides methods for interacting with system resources such as processes, memory, and CPU usage.
+/// * `process_pattern`: A string pattern that is used to match against the names of processes running
+/// on the system. The function will return true if at least one process name matches the pattern, and
+/// false otherwise.
+///
+/// Returns:
+///
+/// A boolean value indicating whether there are any processes in the system that match the given
+/// regular expression pattern.
 async fn find_processes_by_regex(system: &mut System, process_pattern: &str) -> bool {
     system.refresh_all();
     let regex = Regex::new(process_pattern).unwrap();
@@ -409,6 +440,13 @@ async fn find_processes_by_regex(system: &mut System, process_pattern: &str) -> 
     process_exists
 }
 
+/// This function listens for key presses and terminates the program if the END key is pressed, or sets
+/// a boolean value to false if the HOME key is pressed.
+///
+/// Arguments:
+///
+/// * `pick_ban_selection`: An Arc wrapped AtomicBool variable that is used to control the pick/ban
+/// selection process. It is shared between multiple threads and can be modified atomically.
 async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
     use winapi::um::winuser::GetAsyncKeyState;
     let pressed = -32767;
