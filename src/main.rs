@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let program_control_thread = tokio::spawn(key_listener(pick_ban_selection.clone()));
 
     println!("Press the END key to terminate the program.");
-    println!("Press the HOME key to choose auto-pick and auto-ban champions.");
+    println!("Press the HOME key to choose auto-pick and auto-ban champions. press it again to clear your picks");
     while !(find_processes_by_regex(&mut system, process_pattern).await) {
         if program_control_thread.is_finished() {
             return Ok(());
