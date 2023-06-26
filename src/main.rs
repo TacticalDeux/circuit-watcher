@@ -337,7 +337,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     .json(&ban_body)
                                     .send()
                                     .await?;
-                                println!(
+                                timestamped_println!(
                                     "Banned champion {} id:{}",
                                     champ_ban_id.clone().unwrap().1,
                                     champ_ban_id.clone().unwrap().0
@@ -361,7 +361,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 .json(&pick_body)
                                 .send()
                                 .await?;
-                            println!("Picked champion {} id:{}", champ_pick_name, champ_pick_id);
+                            timestamped_println!("Picked champion {} id:{}", champ_pick_name, champ_pick_id);
                             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         }
                     }
