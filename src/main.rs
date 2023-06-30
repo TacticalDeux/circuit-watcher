@@ -32,6 +32,12 @@ macro_rules! timestamped_print {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+/// The `Champion` struct is a data structure used for (de)serialization of the `champsions.json` file.
+///
+/// ### Properties:
+/// * `id`: The `id` property is of type `u32`, which stands for "unsigned 32-bit integer". It is used
+/// to uniquely identify each instance of the `Champion` struct.
+/// * `name`: The `name` property is a string that represents the name of a champion.
 struct Champion {
     id: u32,
     name: String,
@@ -39,12 +45,47 @@ struct Champion {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct ResponseData {
+/// The `ActionResponseData` struct is a data structure used to represent the response data for a champion select action.
+///
+/// ### Properties:
+/// * `actorCellId`: The `actorCellId` property is of type `i32`, which stands for a 32-bit signed
+/// integer. It represents the ID of a summoner in the given champion selection lobby.
+/// * `completed`: The "completed" property is a boolean value that indicates whether the action
+/// associated with the response data has been completed or not.
+/// * `id`: The `id` property is of type `i32`, which stands for a 32-bit signed integer. It is used to
+/// uniquely identify an action response data object. It differs from the `actorCellId` by being a unique id tied to the action `r#type`.
+/// * `isInProgress`: The `isInProgress` property is a boolean value that indicates whether the action
+/// is currently in progress or not.
+/// * `r#type`: The property "r#type" is a string that represents the type of action response data. The
+/// "r#" prefix is used to escape the reserved keyword "type" in Rust.
+struct ActionResponseData {
     actorCellId: i32,
     completed: bool,
     id: i32,
     isInProgress: bool,
     r#type: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize)]
+/// The `RunesData` struct represents the rune data needed to do a POST request to create a new rune page.
+/// There is more data in a GET request response for runes but only this fields are needed for the creation of a page.
+///
+/// ### Properties:
+/// * `id`: The `id` property is of type `u64`, which stands for unsigned 64-bit integer. It is used to
+/// uniquely identify each `RunesData` object.
+/// * `name`: The `name` property is a string that represents the name of the rune page.
+/// * `primaryStyleId`: The `primaryStyleId` property represents the ID of the primary rune style chosen
+/// for a particular rune set (E.g. Domination).
+/// * `selectedPerkIds`: The `selectedPerkIds` property is a vector (dynamic array) of `u32` values. It
+/// is used to store the IDs of the selected perks for a particular rune (E.g. Cheap Shot, Eyeball Collection and Relentless Hunter).
+/// * `subStyleId`: The `subStyleId` property in the `RunesData` struct represents the ID of the secondary rune.
+struct RunesData {
+    id: u64,
+    name: String,
+    primaryStyleId: u32,
+    selectedPerkIds: Vec<u32>,
+    subStyleId: u32,
 }
 
 #[tokio::main]
@@ -55,7 +96,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let program_control_thread = tokio::spawn(key_listener(pick_ban_selection.clone()));
 
     println!("Press the END key to terminate the program.");
-    println!("Press the HOME key to choose auto-pick and auto-ban champions. press it again to clear your picks");
+    println!("Press the HOME key to choose auto-pick and auto-ban champions.\nPress it again to clear your picks and turn off auto-pick/ban");
+    println!("The order the rune pages are in your inventory is the order they're chosen for champions.");
+    println!("The name and order of the pages can be changed at any moment.\nYou can check them by choosing champs again pressing HOME.");
     while !(find_processes_by_regex(&mut system, process_pattern).await) {
         if program_control_thread.is_finished() {
             return Ok(());
@@ -92,31 +135,64 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut champ_pick_ids: Vec<(u32, String)> = Vec::new();
     let mut champ_ban_id: Option<(u32, String)> = None;
     let mut locked_champ = false;
+    let mut champ_pick_magic_number = 1;
     loop {
+        let rune_data: serde_json::Value = rest_client
+            .get(format!(
+                "https://127.0.0.1:{}/lol-perks/v1/pages",
+                lockfile.port
+            ))
+            .send()
+            .await?
+            .json()
+            .await?;
+        let rune_data_respone: Vec<RunesData> = serde_json::from_value(rune_data.clone())?;
+        let extracted_rune_data: Vec<(u64, String, u32, Vec<u32>, u32)> = rune_data_respone
+            .iter()
+            .map(|data| {
+                (
+                    data.id,
+                    data.name.clone(),
+                    data.primaryStyleId,
+                    data.selectedPerkIds.clone(),
+                    data.subStyleId,
+                )
+            })
+            .collect();
+        let (
+            rune1_id,
+            rune1_name,
+            rune1_primary_style_id,
+            rune1_selected_perk_ids,
+            rune1_substyle_id,
+        ) = extracted_rune_data.get(0).cloned().unwrap();
+        let (
+            rune2_id,
+            rune2_name,
+            rune2_primary_style_id,
+            rune2_selected_perk_ids,
+            rune2_substyle_id,
+        ) = extracted_rune_data
+            .get(1)
+            .cloned()
+            .unwrap_or((0, "".to_string(), 0, vec![0], 0));
+
         let already_picked = pick_ban_selection.load(Ordering::SeqCst);
+
         if !already_picked {
             if program_control_thread.is_finished() {
                 return Ok(());
             }
-            if champ_pick_ids.len() >= 3 {
-                let mut input = String::new();
+            if champ_pick_ids.len() >= 2 {
                 champ_pick_ids.clear();
 
-                println!("Press enter with no inputs to exit auto-pick/ban selection");
-                println!("Enter a champion name to pick");
-
-                io::stdin()
-                    .read_line(&mut input)
-                    .expect("Failed to read input");
-                input = input.trim().to_string().to_lowercase();
-
-                if input.is_empty() {
-                    pick_ban_selection.store(true, Ordering::SeqCst);
-                    input.clear();
-                    continue;
-                }
+                println!(
+                    "Picks and ban selection cleared, press home to pick your champions again."
+                );
+                pick_ban_selection.store(true, Ordering::SeqCst);
+                continue;
             }
-            for i in 0..4 {
+            for i in 0..3 {
                 if program_control_thread.is_finished() {
                     return Ok(());
                 }
@@ -130,9 +206,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("Enter an alternative champion name to pick:");
                 }
                 if i == 2 {
-                    println!("Enter an alternative champion name to pick:");
-                }
-                if i == 3 {
                     println!("Enter a champion name to ban:");
                 }
 
@@ -153,7 +226,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                         match matching_champion {
                             Some(champion) => {
-                                if i == 3 {
+                                if i == 2 {
                                     champ_ban_id = Some((champion.id, champion.name.clone()));
                                 } else {
                                     if champ_pick_ids
@@ -181,13 +254,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             pick_ban_selection.store(true, Ordering::SeqCst);
             for (id, name) in &champ_pick_ids {
-                println!("Champions (and alternatives) to pick: {} id:{}", name, id);
+                println!("Champion to pick: {}, id:{}", name, id);
             }
             println!(
                 "Champion to ban: {} id:{}",
-                champ_ban_id.clone().unwrap().1,
-                champ_ban_id.clone().unwrap().0
+                &champ_ban_id.as_ref().unwrap().1,
+                &champ_ban_id.as_ref().unwrap().0
             );
+            println!("Rune page \"{}\" for {}", &rune1_name, &champ_pick_ids[0].1 /*first champ's name*/);
+            println!("Rune page \"{}\" for {}", &rune2_name, &champ_pick_ids[1].1 /*second champ's name*/);
         }
 
         let gameflow: serde_json::Value = rest_client
@@ -217,6 +292,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     print!(" ");
                 }
                 std::io::stdout().flush().unwrap();
+                champ_pick_magic_number = 1;
                 found_match = false;
                 dodge_check = true;
                 locked_champ = false;
@@ -240,7 +316,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some("ChampSelect") => {
-                if champ_pick_ids.len() < 3 {
+                if champ_pick_ids.len() < 2 {
                     continue;
                 }
                 for (champ_pick_id, champ_pick_name) in &champ_pick_ids {
@@ -257,7 +333,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
                             lockfile.port,
-                            champ_ban_id.clone().unwrap().0
+                            &champ_ban_id.as_ref().unwrap().0
                         ))
                         .send()
                         .await?
@@ -277,10 +353,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         dodge_check = false;
                     }
 
-                    let action_response: Vec<Vec<ResponseData>> =
+                    let action_response: Vec<Vec<ActionResponseData>> =
                         serde_json::from_value(current_champ_select["actions"].clone())?;
 
-                    let filtered_data: Vec<ResponseData> = action_response
+                    let filtered_action_data: Vec<ActionResponseData> = action_response
                         .iter()
                         .flatten()
                         .filter(|data| {
@@ -289,33 +365,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .take(2) // Limit to a maximum of 2 matches
                         .cloned()
                         .collect();
+                    let extracted_action_data: Vec<(i32, bool, String, bool)> =
+                        filtered_action_data
+                            .iter()
+                            .map(|data| {
+                                (
+                                    data.id,
+                                    data.isInProgress,
+                                    data.r#type.clone(),
+                                    data.completed,
+                                )
+                            })
+                            .collect();
 
-                    let extracted_data: Vec<(i32, bool, String, bool)> = filtered_data
-                        .iter()
-                        .map(|data| {
-                            (
-                                data.id,
-                                data.isInProgress,
-                                data.r#type.clone(),
-                                data.completed,
-                            )
-                        })
-                        .collect();
-
-                    let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_data
+                    let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_action_data
                         .get(0)
                         .cloned()
                         .unwrap_or((0, false, "".to_string(), false));
-                    let (pick_id, pick_is_in_progress, _type2, pick_completed) = extracted_data
-                        .get(1)
-                        .cloned()
-                        .unwrap_or((0, false, "".to_string(), false));
+                    let (pick_id, pick_is_in_progress, _type2, pick_completed) =
+                        extracted_action_data.get(1).cloned().unwrap_or((
+                            0,
+                            false,
+                            "".to_string(),
+                            false,
+                        ));
 
                     let ban_body = serde_json::json!({
                             "actorCellId": current_champ_select["localPlayerCellId"],
-                            "championId": champ_ban_id.clone().unwrap().0,
+                            "championId": &champ_ban_id.as_ref().unwrap().0,
                             "completed": true,
-                            "id": ban_id.clone(),
+                            "id": &ban_id,
                             "isAllyAction": true,
                             "type": "ban"
                     });
@@ -323,23 +402,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             "actorCellId": current_champ_select["localPlayerCellId"],
                             "championId": champ_pick_id,
                             "completed": true,
-                            "id": pick_id.clone(),
+                            "id": &pick_id,
                             "isAllyAction": true,
                             "type": "pick"
+                    });
+                    let rune1_body = serde_json::json!({
+                        "name": rune1_name.clone(),
+                        "primaryStyleId": rune1_primary_style_id,
+                        "selectedPerkIds": rune1_selected_perk_ids.clone(),
+                        "subStyleId": rune1_substyle_id
+                    });
+                    let rune2_body = serde_json::json!({
+                        "name": rune2_name.clone(),
+                        "primaryStyleId": rune2_primary_style_id,
+                        "selectedPerkIds": rune2_selected_perk_ids.clone(),
+                        "subStyleId": rune2_substyle_id
                     });
 
                     if !pick_is_in_progress
                         && pick_completed
                         && !ban_is_in_progress
                         && ban_completed
-                        && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true
-                        && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true
                         || current_champ_select["timer"]["phase"] == "PLANNING"
                     {
+                        if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
+                            champ_pick_magic_number += 1;
+                            continue;
+                        }
                         continue;
                     }
 
-                    if ban_is_in_progress && !ban_completed {
+                    if ban_is_in_progress
+                        && !ban_completed
+                        && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true
+                    {
                         rest_client
                             .patch(format!(
                                 "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
@@ -350,10 +446,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .await?;
                         timestamped_println!(
                             "Banned champion {} id:{}",
-                            champ_ban_id.clone().unwrap().1,
-                            champ_ban_id.clone().unwrap().0
+                            &champ_ban_id.as_ref().unwrap().1,
+                            &champ_ban_id.as_ref().unwrap().0
                         );
                         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        break;
                     }
                     if pick_is_in_progress
                         && !pick_completed
@@ -361,6 +458,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         && ban_completed
                         && !locked_champ
                     {
+                        if champ_pick_magic_number == 1 {
+                            rest_client
+                                .delete(format!(
+                                    "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
+                                    lockfile.port, rune1_id
+                                ))
+                                .send()
+                                .await?;
+
+                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+                            rest_client
+                                .post(format!(
+                                    "https://127.0.0.1:{}/lol-perks/v1/pages",
+                                    lockfile.port
+                                ))
+                                .json(&rune1_body)
+                                .send()
+                                .await?;
+                        } else {
+                            rest_client
+                                .delete(format!(
+                                    "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
+                                    lockfile.port, rune2_id
+                                ))
+                                .send()
+                                .await?;
+
+                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+                            rest_client
+                                .post(format!(
+                                    "https://127.0.0.1:{}/lol-perks/v1/pages",
+                                    lockfile.port
+                                ))
+                                .json(&rune2_body)
+                                .send()
+                                .await?;
+                        }
                         rest_client
                             .patch(format!(
                                 "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
@@ -411,18 +547,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 /// This Rust function searches for processes matching a given regular expression pattern and returns a
 /// boolean indicating whether any matching processes were found.
 ///
-/// Arguments:
+/// ### Arguments:
 ///
 /// * `system`: A mutable reference to a `System` struct, which represents the current system state and
 /// provides methods for interacting with system resources such as processes, memory, and CPU usage.
 /// * `process_pattern`: A string pattern that is used to match against the names of processes running
-/// on the system. The function will return true if at least one process name matches the pattern, and
-/// false otherwise.
+/// on the system.
 ///
-/// Returns:
+/// #### Returns:
 ///
 /// A boolean value indicating whether there are any processes in the system that match the given
 /// regular expression pattern.
+///
+/// The function will return true if at least one process name matches the pattern, and
+/// false otherwise.
 async fn find_processes_by_regex(system: &mut System, process_pattern: &str) -> bool {
     system.refresh_all();
     let regex = Regex::new(process_pattern).unwrap();
@@ -436,13 +574,14 @@ async fn find_processes_by_regex(system: &mut System, process_pattern: &str) -> 
     process_exists
 }
 
-/// This function listens for key presses and terminates the program if the END key is pressed, or sets
-/// a boolean value to false if the HOME key is pressed.
+/// The function `key_listener` listens for key presses and terminates the program if the END key is
+/// pressed, or sets a flag to false if the HOME key is pressed.
 ///
-/// Arguments:
+/// ### Arguments:
 ///
-/// * `pick_ban_selection`: An Arc wrapped AtomicBool variable that is used to control the pick/ban
-/// selection process. It is shared between multiple threads and can be modified atomically.
+/// * `pick_ban_selection`: The `pick_ban_selection` parameter is an `Arc<AtomicBool>` which is a
+/// thread-safe atomic boolean value wrapped in an `Arc` (atomic reference count) smart pointer. It is
+/// used to control the pick and ban selection process in the program.
 async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
     use winapi::um::winuser::GetAsyncKeyState;
     let pressed = -32767;
