@@ -93,16 +93,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let process_pattern = "LeagueClient";
     let mut system = System::new_all();
     let pick_ban_selection = Arc::new(AtomicBool::new(true));
-    let program_control_thread = tokio::spawn(key_listener(pick_ban_selection.clone()));
+    let _program_control_thread = tokio::spawn(key_listener(pick_ban_selection.clone()));
 
     println!("Press the END key to terminate the program.");
     println!("Press the HOME key to choose auto-pick and auto-ban champions.\nPress it again to clear your picks and turn off auto-pick/ban");
     println!("The order the rune pages are in your inventory is the order they're chosen for champions.");
     println!("The name and order of the pages can be changed at any moment.\nYou can check them by choosing champs again pressing HOME.");
     while !(find_processes_by_regex(&mut system, process_pattern).await) {
-        if program_control_thread.is_finished() {
-            return Ok(());
-        }
         println!("The pattern '{process_pattern}' does not match any active processes. You may have closed the LoL client.\nRetrying in 30 seconds.");
         tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
     }
@@ -180,9 +177,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let already_picked = pick_ban_selection.load(Ordering::SeqCst);
 
         if !already_picked {
-            if program_control_thread.is_finished() {
-                return Ok(());
-            }
             if champ_pick_ids.len() >= 2 {
                 champ_pick_ids.clear();
 
@@ -193,9 +187,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 continue;
             }
             for i in 0..3 {
-                if program_control_thread.is_finished() {
-                    return Ok(());
-                }
                 let mut valid_name_entered = false;
                 let mut input = String::new();
 
@@ -210,9 +201,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 while !valid_name_entered {
-                    if program_control_thread.is_finished() {
-                        return Ok(());
-                    }
                     io::stdin()
                         .read_line(&mut input)
                         .expect("Failed to read input");
@@ -275,10 +263,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .json()
             .await?;
         let phase = gameflow["phase"].as_str();
-
-        if program_control_thread.is_finished() {
-            break;
-        }
 
         match phase {
             Some("Matchmaking") => {
@@ -540,8 +524,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
-
-    Ok(())
 }
 
 /// This Rust function searches for processes matching a given regular expression pattern and returns a
@@ -594,8 +576,9 @@ async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
         };
 
         if end_key == pressed {
-            println!("\nEND key pressed, terminating the program.");
-            break;
+            println!("\nEND key pressed, terminating the program in 5 seconds.");
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            std::process::exit(0);
         }
 
         if home_key == pressed {
