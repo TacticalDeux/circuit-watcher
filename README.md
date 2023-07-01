@@ -19,7 +19,8 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - [x] Terminal timestamps (mostly for debugging purposes)
 - [x] Champ auto-pick
 - [x] Champ auto-ban
-- [ ] Pick runes depending on champ auto-locked (might reduce pick alternatives to only one instead of two)
+- [x] Pick runes depending on champ auto-locked (might reduce pick alternatives to only one instead of two)
+- [ ] Role check when auto-picking so champs aren't locked if you didn't get main role
 - [ ] Maybe queue rejoining?
 - [ ] Maybe an interface?
 
