@@ -440,6 +440,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         && !pick_completed
                         && !ban_is_in_progress
                         && ban_completed
+                        && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true
                         && !locked_champ
                     {
                         if champ_pick_magic_number == 1 {
