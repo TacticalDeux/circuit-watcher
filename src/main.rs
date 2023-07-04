@@ -97,7 +97,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Press the END key to terminate the program.");
     println!("Press the HOME key to choose auto-pick and auto-ban champions.\nPress it again to clear your picks and turn off auto-pick/ban");
-    println!("The order the rune pages are in your inventory is the order they're chosen for champions.");
+    println!(
+        "The order the rune pages are in your inventory is the order they're chosen for champions."
+    );
     println!("The name and order of the pages can be changed at any moment.\nYou can check them by choosing champs again pressing HOME.");
     while !(find_processes_by_regex(&mut system, process_pattern).await) {
         println!("The pattern '{process_pattern}' does not match any active processes. You may have closed the LoL client.\nRetrying in 30 seconds.");
@@ -249,8 +251,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 &champ_ban_id.as_ref().unwrap().1,
                 &champ_ban_id.as_ref().unwrap().0
             );
-            println!("Rune page \"{}\" for {}", &rune1_name, &champ_pick_ids[0].1 /*first champ's name*/);
-            println!("Rune page \"{}\" for {}", &rune2_name, &champ_pick_ids[1].1 /*second champ's name*/);
+            println!(
+                "Rune page \"{}\" for {}",
+                &rune1_name, &champ_pick_ids[0].1 /*first champ's name*/
+            );
+            println!(
+                "Rune page \"{}\" for {}",
+                &rune2_name, &champ_pick_ids[1].1 /*second champ's name*/
+            );
         }
 
         let gameflow: serde_json::Value = rest_client
@@ -434,6 +442,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             &champ_ban_id.as_ref().unwrap().0
                         );
                         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        break;
+                    }
+                    if !pick_is_in_progress {
                         break;
                     }
                     if pick_is_in_progress
