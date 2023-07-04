@@ -16,6 +16,12 @@ cargo build --release
 
 or downloading through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases)
 
+## Features
+
+- Queue auto-accept.
+- Toggeable auto-pick and auto-ban.
+- Toggeable rune page change (based on auto-pick). Only works on non-recommended rune pages, will delete rune page if it's data is auto-recommended, can be bypassed by using auto-recommendation after locking champ.
+
 ### TODO
 
 - [x] Queue auto-accept
@@ -23,9 +29,9 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - [x] Champ auto-pick
 - [x] Champ auto-ban
 - [x] Pick runes depending on champ auto-locked (might reduce pick alternatives to only one instead of two)
-- [ ] Role check when auto-picking so champs aren't locked if you didn't get main role
+- [ ] Role check when auto-picking so champs aren't locked/banned if you didn't get main role
 - [ ] Maybe queue rejoining?
-- [ ] Maybe an interface?
+- [ ] Maybe an actual UI (veering off of CLI)?
 
 ***
 

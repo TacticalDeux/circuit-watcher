@@ -93,18 +93,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let process_pattern = "LeagueClient";
     let mut system = System::new_all();
     let pick_ban_selection = Arc::new(AtomicBool::new(true));
-    let _program_control_thread = tokio::spawn(key_listener(pick_ban_selection.clone()));
+    let rune_page_selection = Arc::new(AtomicBool::new(false));
+    let _program_control_thread = tokio::spawn(key_listener(
+        pick_ban_selection.clone(),
+        rune_page_selection.clone(),
+    ));
 
     println!("Press the END key to terminate the program.");
+    println!("Press LSHIFT + HOME keys to toggle rune page change (based on auto-pick selection).");
     println!("Press the HOME key to choose auto-pick and auto-ban champions.\nPress it again to clear your picks and turn off auto-pick/ban");
-    println!(
-        "The order the rune pages are in your inventory is the order they're chosen for champions."
-    );
-    println!("The name and order of the pages can be changed at any moment.\nYou can check them by choosing champs again pressing HOME.");
     while !(find_processes_by_regex(&mut system, process_pattern).await) {
-        println!("The pattern '{process_pattern}' does not match any active processes. You may have closed the LoL client.\nRetrying in 30 seconds.");
-        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        println!("The pattern '{process_pattern}' does not match any active processes. You may have closed the LoL client.\nRetrying in 10 seconds.");
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
     }
+    println!(
+        "League process found. Waiting for 10 seconds to ensure connectivity to league client."
+    );
+    println!(
+        "If an error is thrown try reopening the program when the LeagueClient is fully opened."
+    );
+    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    // sleeping for if the client process is running but the UX hasn't yet spawned
+    // so no lockfile would be generated, thus giving an error.
 
     let lockfile = LeagueClientConnector::parse_lockfile().unwrap();
     let auth_header =
@@ -130,12 +140,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut dots_count = 0;
     let mut found_match = false;
-    let mut dodge_check = true;
     let mut champ_pick_ids: Vec<(u32, String)> = Vec::new();
     let mut champ_ban_id: Option<(u32, String)> = None;
     let mut locked_champ = false;
-    let mut champ_pick_magic_number = 1;
+    let mut champ_pick_magic_number = 1; // this is just to check which champion has ben picked/banned on the champion_pick_ids Vec.
+                                              // named it this way just for funsies, no real reason lol. Is an int because Vec used to be at least of length 3.
     loop {
+        let mut no_input = false;
         let rune_data: serde_json::Value = rest_client
             .get(format!(
                 "https://127.0.0.1:{}/lol-perks/v1/pages",
@@ -177,13 +188,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .unwrap_or((0, "".to_string(), 0, vec![0], 0));
 
         let already_picked = pick_ban_selection.load(Ordering::SeqCst);
-
         if !already_picked {
-            if champ_pick_ids.len() >= 2 {
+            if champ_pick_ids.len() != 0 || champ_ban_id.is_some() {
+                champ_ban_id = None;
                 champ_pick_ids.clear();
 
                 println!(
-                    "Picks and ban selection cleared, press home to pick your champions again."
+                    "Picks and ban selection cleared, turning auto-pick/ban off, press home to pick your champions again."
                 );
                 pick_ban_selection.store(true, Ordering::SeqCst);
                 continue;
@@ -193,13 +204,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let mut input = String::new();
 
                 if i == 0 {
-                    println!("Enter a champion name to pick:");
+                    println!("Enter a champion name to pick (press enter to skip):");
                 }
                 if i == 1 {
-                    println!("Enter an alternative champion name to pick:");
+                    if no_input {
+                        continue;
+                    }
+                    println!("Enter an alternative champion name to pick (press enter to skip):");
                 }
                 if i == 2 {
-                    println!("Enter a champion name to ban:");
+                    println!("Enter a champion name to ban (press enter to skip):");
                 }
 
                 while !valid_name_entered {
@@ -209,6 +223,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     input = input.trim().to_string().to_lowercase();
 
+                    if i == 2 && no_input && input.is_empty() {
+                        println!("Empty string entered. There has to be at least one champion either to ban or pick.");
+                        input.clear();
+                        continue;
+                    }
+
+                    if i == 0 && input.is_empty() {
+                        no_input = true;
+                        valid_name_entered = true;
+                    }
+                    if i == 1 && input.is_empty() {
+                        no_input = false;
+                        valid_name_entered = true;
+                    }
+                    if i == 2 && !no_input && input.is_empty() {
+                        valid_name_entered = true;
+                    }
+
                     if !input.is_empty() {
                         let matching_champion = champions
                             .iter()
@@ -216,18 +248,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                         match matching_champion {
                             Some(champion) => {
+                                if champ_pick_ids.contains(&(champion.id, champion.name.clone())) {
+                                    println!(
+                                        "Champion already selected. Please choose a different one."
+                                    );
+                                    input.clear();
+                                    continue;
+                                }
                                 if i == 2 {
                                     champ_ban_id = Some((champion.id, champion.name.clone()));
                                 } else {
-                                    if champ_pick_ids
-                                        .contains(&(champion.id, champion.name.clone()))
-                                    {
-                                        println!(
-                                        "Champion already selected. Please choose a different one."
-                                    );
-                                        input.clear();
-                                        continue;
-                                    }
                                     champ_pick_ids.push((champion.id, champion.name.clone()));
                                 }
                                 valid_name_entered = true;
@@ -237,28 +267,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 input.clear();
                             }
                         }
-                    } else {
-                        println!("Empty string entered. Please try again.");
                     }
                 }
             }
             pick_ban_selection.store(true, Ordering::SeqCst);
-            for (id, name) in &champ_pick_ids {
-                println!("Champion to pick: {}, id:{}", name, id);
+            if champ_ban_id.is_some() {
+                println!(
+                    "Champion to ban: {} id:{}",
+                    &champ_ban_id.as_ref().unwrap().1,
+                    &champ_ban_id.as_ref().unwrap().0
+                );
             }
-            println!(
-                "Champion to ban: {} id:{}",
-                &champ_ban_id.as_ref().unwrap().1,
-                &champ_ban_id.as_ref().unwrap().0
-            );
-            println!(
-                "Rune page \"{}\" for {}",
-                &rune1_name, &champ_pick_ids[0].1 /*first champ's name*/
-            );
-            println!(
-                "Rune page \"{}\" for {}",
-                &rune2_name, &champ_pick_ids[1].1 /*second champ's name*/
-            );
+            if champ_pick_ids.len() != 0 {
+                for (id, name) in &champ_pick_ids {
+                    println!("Champion to pick: {}, id:{}", name, id);
+                }
+
+                println!(
+                    "Rune page \"{}\" for {} (only if rune page change is active)",
+                    &rune1_name, &champ_pick_ids[0].1 /*first champ's name*/
+                );
+                if champ_pick_ids.len() > 1 {
+                    println!(
+                        "Rune page \"{}\" for {}",
+                        &rune2_name, &champ_pick_ids[1].1 /*second champ's name*/
+                    );
+                }
+            }
         }
 
         let gameflow: serde_json::Value = rest_client
@@ -286,7 +321,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 std::io::stdout().flush().unwrap();
                 champ_pick_magic_number = 1;
                 found_match = false;
-                dodge_check = true;
                 locked_champ = false;
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             }
@@ -308,19 +342,61 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some("ChampSelect") => {
-                if champ_pick_ids.len() < 2 {
+                let rune_change = rune_page_selection.load(Ordering::SeqCst);
+
+                if champ_pick_ids.len() == 0 && champ_ban_id.is_none() {
                     continue;
                 }
-                for (champ_pick_id, champ_pick_name) in &champ_pick_ids {
-                    let current_champ_select: serde_json::Value = rest_client
-                        .get(format!(
-                            "https://127.0.0.1:{}/lol-champ-select/v1/session",
-                            lockfile.port
-                        ))
-                        .send()
-                        .await?
-                        .json()
-                        .await?;
+
+                let current_champ_select: serde_json::Value = rest_client
+                    .get(format!(
+                        "https://127.0.0.1:{}/lol-champ-select/v1/session",
+                        lockfile.port
+                    ))
+                    .send()
+                    .await?
+                    .json()
+                    .await?;
+
+                let action_response: Vec<Vec<ActionResponseData>> =
+                    serde_json::from_value(current_champ_select["actions"].clone())?;
+                let filtered_action_data: Vec<ActionResponseData> = action_response
+                    .iter()
+                    .flatten()
+                    .filter(|data| data.actorCellId == current_champ_select["localPlayerCellId"])
+                    .take(2) // Limit to a maximum of 2 matches
+                    .cloned()
+                    .collect();
+                let extracted_action_data: Vec<(i32, bool, String, bool)> = filtered_action_data
+                    .iter()
+                    .map(|data| {
+                        (
+                            data.id,
+                            data.isInProgress,
+                            data.r#type.clone(),
+                            data.completed,
+                        )
+                    })
+                    .collect();
+
+                let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_action_data
+                    .get(0)
+                    .cloned()
+                    .unwrap_or((0, false, "".to_string(), false));
+                let (pick_id, pick_is_in_progress, _type2, pick_completed) = extracted_action_data
+                    .get(1)
+                    .cloned()
+                    .unwrap_or((0, false, "".to_string(), false));
+
+                if champ_ban_id.is_some() {
+                    let ban_body = serde_json::json!({
+                            "actorCellId": current_champ_select["localPlayerCellId"],
+                            "championId": &champ_ban_id.as_ref().unwrap().0,
+                            "completed": true,
+                            "id": &ban_id,
+                            "isAllyAction": true,
+                            "type": "ban"
+                    });
                     let ban_champ_info: serde_json::Value = rest_client
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
@@ -331,102 +407,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .await?
                         .json()
                         .await?;
-                    let pick_champ_info: serde_json::Value = rest_client
-                        .get(format!(
-                            "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                            lockfile.port, champ_pick_id
-                        ))
-                        .send()
-                        .await?
-                        .json()
-                        .await?;
-
-                    if dodge_check {
-                        dodge_check = false;
-                    }
-
-                    let action_response: Vec<Vec<ActionResponseData>> =
-                        serde_json::from_value(current_champ_select["actions"].clone())?;
-
-                    let filtered_action_data: Vec<ActionResponseData> = action_response
-                        .iter()
-                        .flatten()
-                        .filter(|data| {
-                            data.actorCellId == current_champ_select["localPlayerCellId"]
-                        })
-                        .take(2) // Limit to a maximum of 2 matches
-                        .cloned()
-                        .collect();
-                    let extracted_action_data: Vec<(i32, bool, String, bool)> =
-                        filtered_action_data
-                            .iter()
-                            .map(|data| {
-                                (
-                                    data.id,
-                                    data.isInProgress,
-                                    data.r#type.clone(),
-                                    data.completed,
-                                )
-                            })
-                            .collect();
-
-                    let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_action_data
-                        .get(0)
-                        .cloned()
-                        .unwrap_or((0, false, "".to_string(), false));
-                    let (pick_id, pick_is_in_progress, _type2, pick_completed) =
-                        extracted_action_data.get(1).cloned().unwrap_or((
-                            0,
-                            false,
-                            "".to_string(),
-                            false,
-                        ));
-
-                    let ban_body = serde_json::json!({
-                            "actorCellId": current_champ_select["localPlayerCellId"],
-                            "championId": &champ_ban_id.as_ref().unwrap().0,
-                            "completed": true,
-                            "id": &ban_id,
-                            "isAllyAction": true,
-                            "type": "ban"
-                    });
-                    let pick_body = serde_json::json!({
-                            "actorCellId": current_champ_select["localPlayerCellId"],
-                            "championId": champ_pick_id,
-                            "completed": true,
-                            "id": &pick_id,
-                            "isAllyAction": true,
-                            "type": "pick"
-                    });
-                    let rune1_body = serde_json::json!({
-                        "name": rune1_name.clone(),
-                        "primaryStyleId": rune1_primary_style_id,
-                        "selectedPerkIds": rune1_selected_perk_ids.clone(),
-                        "subStyleId": rune1_substyle_id
-                    });
-                    let rune2_body = serde_json::json!({
-                        "name": rune2_name.clone(),
-                        "primaryStyleId": rune2_primary_style_id,
-                        "selectedPerkIds": rune2_selected_perk_ids.clone(),
-                        "subStyleId": rune2_substyle_id
-                    });
-
-                    if !pick_is_in_progress
-                        && pick_completed
-                        && !ban_is_in_progress
-                        && ban_completed
-                        || current_champ_select["timer"]["phase"] == "PLANNING"
-                    {
-                        if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
-                            champ_pick_magic_number += 1;
-                            continue;
-                        }
-                        continue;
-                    }
 
                     if ban_is_in_progress
                         && !ban_completed
                         && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true
+                        && current_champ_select["timer"]["phase"] != "PLANNING"
                     {
                         rest_client
                             .patch(format!(
@@ -442,74 +427,127 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             &champ_ban_id.as_ref().unwrap().0
                         );
                         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                        break;
                     }
-                    if !pick_is_in_progress {
-                        break;
-                    }
-                    if pick_is_in_progress
-                        && !pick_completed
-                        && !ban_is_in_progress
-                        && ban_completed
-                        && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true
-                        && !locked_champ
-                    {
-                        if champ_pick_magic_number == 1 {
-                            rest_client
-                                .delete(format!(
-                                    "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
-                                    lockfile.port, rune1_id
-                                ))
-                                .send()
-                                .await?;
+                }
 
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-                            rest_client
-                                .post(format!(
-                                    "https://127.0.0.1:{}/lol-perks/v1/pages",
-                                    lockfile.port
-                                ))
-                                .json(&rune1_body)
-                                .send()
-                                .await?;
-                        } else {
-                            rest_client
-                                .delete(format!(
-                                    "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
-                                    lockfile.port, rune2_id
-                                ))
-                                .send()
-                                .await?;
-
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-                            rest_client
-                                .post(format!(
-                                    "https://127.0.0.1:{}/lol-perks/v1/pages",
-                                    lockfile.port
-                                ))
-                                .json(&rune2_body)
-                                .send()
-                                .await?;
-                        }
-                        rest_client
-                            .patch(format!(
-                                "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                lockfile.port, pick_id
+                if champ_pick_ids.len() != 0 {
+                    for (champ_pick_id, champ_pick_name) in &champ_pick_ids {
+                        let pick_champ_info: serde_json::Value = rest_client
+                            .get(format!(
+                                "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
+                                lockfile.port, champ_pick_id
                             ))
-                            .json(&pick_body)
                             .send()
+                            .await?
+                            .json()
                             .await?;
-                        timestamped_println!(
-                            "Picked champion {} id:{}",
-                            champ_pick_name,
-                            champ_pick_id
-                        );
-                        locked_champ = true;
-                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+                        let pick_body = serde_json::json!({
+                                "actorCellId": current_champ_select["localPlayerCellId"],
+                                "championId": champ_pick_id,
+                                "completed": true,
+                                "id": &pick_id,
+                                "isAllyAction": true,
+                                "type": "pick"
+                        });
+                        let rune1_body = serde_json::json!({
+                            "name": rune1_name.clone(),
+                            "primaryStyleId": rune1_primary_style_id,
+                            "selectedPerkIds": rune1_selected_perk_ids.clone(),
+                            "subStyleId": rune1_substyle_id
+                        });
+                        let rune2_body = serde_json::json!({
+                            "name": rune2_name.clone(),
+                            "primaryStyleId": rune2_primary_style_id,
+                            "selectedPerkIds": rune2_selected_perk_ids.clone(),
+                            "subStyleId": rune2_substyle_id
+                        });
+
+                        if !pick_is_in_progress
+                            && pick_completed
+                            && !ban_is_in_progress
+                            && ban_completed
+                            || current_champ_select["timer"]["phase"] == "PLANNING"
+                        {
+                            break;
+                        }
+
+                        if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] == true {
+                            champ_pick_magic_number += 1;
+                            break;
+                        }
+
+                        if !pick_is_in_progress {
+                            break;
+                        }
+                        if pick_is_in_progress
+                            && !pick_completed
+                            && !ban_is_in_progress
+                            && ban_completed
+                            && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true
+                            && !locked_champ
+                        {
+                            if rune_change {
+                                if champ_pick_magic_number == 1 {
+                                    rest_client
+                                        .delete(format!(
+                                            "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
+                                            lockfile.port, rune1_id
+                                        ))
+                                        .send()
+                                        .await?;
+
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(200))
+                                        .await;
+
+                                    rest_client
+                                        .post(format!(
+                                            "https://127.0.0.1:{}/lol-perks/v1/pages",
+                                            lockfile.port
+                                        ))
+                                        .json(&rune1_body)
+                                        .send()
+                                        .await?;
+                                } else {
+                                    rest_client
+                                        .delete(format!(
+                                            "https://127.0.0.1:{}/lol-perks/v1/pages/{}",
+                                            lockfile.port, rune2_id
+                                        ))
+                                        .send()
+                                        .await?;
+
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(200))
+                                        .await;
+
+                                    rest_client
+                                        .post(format!(
+                                            "https://127.0.0.1:{}/lol-perks/v1/pages",
+                                            lockfile.port
+                                        ))
+                                        .json(&rune2_body)
+                                        .send()
+                                        .await?;
+                                }
+                            }
+                            rest_client
+                                .patch(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
+                                    lockfile.port, pick_id
+                                ))
+                                .json(&pick_body)
+                                .send()
+                                .await?;
+                            timestamped_println!(
+                                "Picked champion {} id:{}",
+                                champ_pick_name,
+                                champ_pick_id
+                            );
+                            locked_champ = true;
+                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
             }
             Some("InProgress") => {
@@ -576,7 +614,7 @@ async fn find_processes_by_regex(system: &mut System, process_pattern: &str) -> 
 /// * `pick_ban_selection`: The `pick_ban_selection` parameter is an `Arc<AtomicBool>` which is a
 /// thread-safe atomic boolean value wrapped in an `Arc` (atomic reference count) smart pointer. It is
 /// used to control the pick and ban selection process in the program.
-async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
+async fn key_listener(pick_ban_selection: Arc<AtomicBool>, rune_page_selection: Arc<AtomicBool>) {
     use winapi::um::winuser::GetAsyncKeyState;
     let pressed = -32767;
     loop {
@@ -586,11 +624,26 @@ async fn key_listener(pick_ban_selection: Arc<AtomicBool>) {
         let home_key = unsafe {
             GetAsyncKeyState(0x24 /*VK_HOME*/)
         };
+        let left_shift_key = unsafe {
+            GetAsyncKeyState(0xA0 /*VK_LSHIFT*/)
+        };
 
         if end_key == pressed {
             println!("\nEND key pressed, terminating the program in 5 seconds.");
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             std::process::exit(0);
+        }
+
+        if home_key == pressed && left_shift_key == -32768
+        /*pressed*/
+        {
+            let rune_page_selection_val = rune_page_selection.load(Ordering::SeqCst);
+            rune_page_selection.store(!rune_page_selection_val, Ordering::SeqCst);
+            println!(
+                "Rune page change is now set to: {}",
+                !rune_page_selection_val
+            );
+            continue;
         }
 
         if home_key == pressed {
