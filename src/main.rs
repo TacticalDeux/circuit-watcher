@@ -433,7 +433,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         {
             tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
         }
-        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(25)).await;
 
         let mut lockfile = LeagueClientConnector::parse_lockfile().unwrap();
         let auth_header =
@@ -447,10 +447,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .default_headers(headers)
             .build()
             .unwrap();
-        let mut client_closed = false;
-        let mut found_match = false;
-        let mut locked_champ = false;
 
+        let mut client_closed = false;
+        let mut locked_champ = false;
         loop {
             while connection_status_clone
                 .lock()
@@ -464,7 +463,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 client_closed = true;
             }
             if client_closed {
-                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(25)).await;
                 lockfile = LeagueClientConnector::parse_lockfile().unwrap();
                 client_closed = false;
             }
@@ -492,7 +491,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             match phase {
                 Some("Matchmaking") => {
                     *gameflow_status_clone.lock().unwrap() = "Looking for a match".to_owned();
-                    found_match = false;
                     locked_champ = false;
                 }
                 Some("Lobby") => {
@@ -500,18 +498,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Some("ReadyCheck") => {
                     if auto_accept {
-                        if !found_match {
-                            found_match = true;
-                            *gameflow_status_clone.lock().unwrap() = "Accepting match".to_owned();
-                            rest_client
-                                .post(format!(
-                                    "https://127.0.0.1:{}/lol-matchmaking/v1/ready-check/accept",
-                                    lockfile.port
-                                ))
-                                .send()
-                                .await
-                                .unwrap();
-                        }
+                        *gameflow_status_clone.lock().unwrap() = "Accepting match".to_owned();
+                        rest_client
+                            .post(format!(
+                                "https://127.0.0.1:{}/lol-matchmaking/v1/ready-check/accept",
+                                lockfile.port
+                            ))
+                            .send()
+                            .await
+                            .unwrap();
                     }
                     *gameflow_status_clone.lock().unwrap() = "Match Found".to_owned();
                 }
