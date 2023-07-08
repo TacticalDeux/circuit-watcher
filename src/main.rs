@@ -433,25 +433,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
         {
             tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
         }
-        tokio::time::sleep(tokio::time::Duration::from_secs(25)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
         let mut lockfile = LeagueClientConnector::parse_lockfile().unwrap();
-        let auth_header =
+        let mut auth_header =
             HeaderValue::from_str(format!("Basic {}", lockfile.b64_auth).as_str()).unwrap();
         let cert = reqwest::Certificate::from_pem(include_bytes!("../riotgames.pem")).unwrap();
         let mut headers = header::HeaderMap::new();
 
         headers.insert(AUTHORIZATION, auth_header.clone());
-        let rest_client = ClientBuilder::new()
-            .add_root_certificate(cert)
+        let mut rest_client = ClientBuilder::new()
+            .add_root_certificate(cert.clone())
             .default_headers(headers)
             .build()
             .unwrap();
 
-        let mut client_closed = false;
         let mut locked_champ = false;
         loop {
-            while connection_status_clone
+            if connection_status_clone
                 .lock()
                 .unwrap()
                 .clone()
@@ -459,13 +458,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .unwrap()
                 .contains("LeagueClient not found, may be closed.")
             {
-                tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
-                client_closed = true;
-            }
-            if client_closed {
-                tokio::time::sleep(tokio::time::Duration::from_secs(25)).await;
-                lockfile = LeagueClientConnector::parse_lockfile().unwrap();
-                client_closed = false;
+                match LeagueClientConnector::parse_lockfile() {
+                    Ok(riotlockfile) => {
+                        lockfile = riotlockfile;
+                        auth_header =
+                            HeaderValue::from_str(format!("Basic {}", lockfile.b64_auth).as_str())
+                                .unwrap();
+                        headers = header::HeaderMap::new();
+
+                        headers.insert(AUTHORIZATION, auth_header.clone());
+                        rest_client = ClientBuilder::new()
+                            .add_root_certificate(cert.clone())
+                            .default_headers(headers)
+                            .build()
+                            .unwrap();
+                        
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                    }
+                    Err(_) => {
+                        continue;
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             }
 
             let champion_picks = champion_picks_clone.lock().unwrap().clone();
