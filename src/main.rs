@@ -11,7 +11,7 @@ use std::sync::{
 };
 
 #[derive(Debug)]
-pub struct MyApp {
+pub struct GUI {
     pick_ban_selection: Arc<AtomicBool>,
     rune_page_selection: Arc<AtomicBool>,
     auto_accept: Arc<AtomicBool>,
@@ -65,7 +65,7 @@ struct ActionResponseData {
     r#type: String,
 }
 
-impl MyApp {
+impl GUI {
     fn new(/*cc: &eframe::CreationContext<'_>*/) -> Self {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
@@ -100,7 +100,7 @@ impl MyApp {
     }
 }
 
-impl eframe::App for MyApp {
+impl eframe::App for GUI {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let pick_ban_selection = self.pick_ban_selection.load(Ordering::SeqCst);
         if let Some(timer) = self.clear_label_timer {
@@ -383,7 +383,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     };
 
-    let app = MyApp::new();
+    let app = GUI::new();
 
     let champion_picks_clone = Arc::clone(&app.champion_picks);
     let ban_picks_clone = Arc::clone(&app.ban_picks);
