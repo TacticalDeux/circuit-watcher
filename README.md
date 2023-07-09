@@ -17,7 +17,7 @@ cd circuit-watcher
 cargo build --release
 ```
 
-or downloading through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases)
+or downloading through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases), extracting the folder on your desktop (or somewhere) and running the .exe.
 
 ## Features
 
