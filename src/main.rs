@@ -472,7 +472,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .default_headers(headers)
                             .build()
                             .unwrap();
-                        
+
                         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                     }
                     Err(_) => {
@@ -506,9 +506,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some("Matchmaking") => {
                     *gameflow_status_clone.lock().unwrap() = "Looking for a match".to_owned();
                     locked_champ = false;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("Lobby") => {
                     *gameflow_status_clone.lock().unwrap() = "In Lobby".to_owned();
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("ReadyCheck") => {
                     if auto_accept {
@@ -521,6 +523,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .send()
                             .await
                             .unwrap();
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                     }
                     *gameflow_status_clone.lock().unwrap() = "Match Found".to_owned();
                 }
@@ -767,6 +770,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     *gameflow_status_clone.lock().unwrap() = "Champion Selection".to_owned();
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("InProgress") => {
                     *gameflow_status_clone.lock().unwrap() = "Game in progress...".to_owned();
@@ -791,7 +795,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 None => {
                     *gameflow_status_clone.lock().unwrap() = "Idling...".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
             }
         }
