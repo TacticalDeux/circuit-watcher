@@ -23,6 +23,7 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 
 - Queue auto-accept.
 - Toggeable auto-pick and auto-ban.
+- Version checking and downloading from the GUI.
 - ~~Toggeable rune page change (based on auto-pick). Only works on non-recommended rune pages, will delete rune page if it's data is auto-recommended, can be bypassed by using auto-recommendation after locking champ.~~ TODO
 
 ### TODO
