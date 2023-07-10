@@ -5,6 +5,7 @@ use league_client_connector::LeagueClientConnector;
 use reqwest::{header, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use std::io::Write;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -22,12 +23,14 @@ pub struct GUI {
     ban_picks: Arc<Mutex<Option<(u32, String)>>>,
     champions: Vec<Champion>,
     gameflow_status: Arc<Mutex<String>>,
-    show_popup: bool,
+    update: Arc<AtomicBool>,
 
     connection_status: Arc<Mutex<Option<String>>>,
     update_status: Arc<Mutex<String>>,
     current_version: Arc<Mutex<String>>,
 
+    update_button_clicked: bool,
+    update_click_time: Option<std::time::Instant>,
     clear_label_timer: Option<std::time::Instant>,
     pick_not_found_label_timer: Option<std::time::Instant>,
     ban_not_found_label_timer: Option<std::time::Instant>,
@@ -68,12 +71,12 @@ struct ActionResponseData {
     r#type: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Release {
     assets: Vec<Asset>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Asset {
     name: String,
     browser_download_url: String,
@@ -112,7 +115,9 @@ impl GUI {
             gameflow_status: Arc::new(Mutex::new(String::new())),
             update_status: Arc::new(Mutex::new(String::new())),
             current_version: Arc::new(Mutex::new(String::new())),
-            show_popup: true,
+            update: Arc::new(AtomicBool::new(false)),
+            update_button_clicked: false,
+            update_click_time: None,
         }
     }
 }
@@ -161,42 +166,23 @@ impl eframe::App for GUI {
                 });
                 if update_status.contains("outdated") {
                     if ui.button("Update").clicked() {
-                        let client = reqwest::blocking::Client::new();
-                        let owner = "tacticaldeuce";
-                        let repo = "circuit-watcher";
+                        self.update_button_clicked = true;
+                        self.update_click_time = Some(std::time::Instant::now());
+                        self.update.store(true, Ordering::SeqCst);
+                    }
+                    if self.update_button_clicked {
+                        let elapsed = self.update_click_time.unwrap().elapsed();
 
-                        // Make a GET request to the GitHub API to retrieve release information
-                        let url = format!(
-                            "https://api.github.com/repos/{}/{}/releases/latest",
-                            owner, repo
-                        );
-                        let response = client
-                            .get(&url)
-                            .header("Accept", "application/vnd.github.v3+json")
-                            .send()
-                            .unwrap();
-
-                        if response.status().is_success() {
-                            let release: Release = response.json().unwrap();
-
-                            for asset in release.assets {
-                                let asset_url = asset.browser_download_url;
-                                let mut response = client.get(&asset_url).send().unwrap();
-
-                                // Save the downloaded asset to a desired location
-                                let file_name = asset.name;
-                                let mut file = std::fs::File::create(&file_name).unwrap();
-                                response.copy_to(&mut file).unwrap();
-
-                                egui::Window::new("Updated")
-                                    .open(&mut self.show_popup)
-                                    .show(ctx, |ui| {
-                                        ui.label("New update has been downloaded successfully to the folder.");
-                                        if ui.button("Close").clicked() {
-                                            std::process::exit(0);
-                                        }
-                                    });
-                            }
+                        if elapsed >= std::time::Duration::from_secs(5) {
+                            egui::Window::new("Updated").open(&mut true).show(ctx, |ui| {
+                                ui.label(
+                                    "New update has been downloaded successfully to this program's folder.",
+                                );
+                                ui.label("Press the close button to terminate the program.");
+                                if ui.button("Close").clicked() {
+                                    std::process::exit(0);
+                                }
+                            });
                         }
                     }
                 }
@@ -523,10 +509,55 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let auto_accept_clone = Arc::clone(&app.auto_accept);
     let update_status_clone = Arc::clone(&app.update_status);
     let current_version_clone = Arc::clone(&app.current_version);
+    let update_clone = Arc::clone(&app.update);
 
     tokio::spawn(async move {
         loop {
             hide_console_window();
+            let update = update_clone.load(Ordering::SeqCst);
+
+            if update {
+                let client = reqwest::Client::builder()
+                    .default_headers({
+                        let mut headers = reqwest::header::HeaderMap::new();
+                        headers.insert(
+                            reqwest::header::USER_AGENT,
+                            reqwest::header::HeaderValue::from_str("CircuitWatcher/2.1.0 (Rust)")
+                                .unwrap(),
+                        );
+                        headers
+                    })
+                    .build()
+                    .unwrap();
+
+                let owner = "tacticaldeuce";
+                let repo = "circuit-watcher";
+
+                let url = format!(
+                    "https://api.github.com/repos/{}/{}/releases/latest",
+                    owner, repo
+                );
+                let response = client.get(&url).send().await.unwrap();
+                let status = response.status();
+                let body: serde_json::Value = response.json().await.unwrap();
+                let release: Release = serde_json::from_value(body).unwrap();
+
+                if status.is_success() {
+                    for asset in release.assets {
+                        let asset_url = asset.browser_download_url.clone();
+
+                        let response = client.get(&asset_url).send().await.unwrap();
+
+                        // Save the downloaded asset to a desired location
+                        let file_name = asset.name;
+                        let mut file = std::fs::File::create(format!("./{}", &file_name)).unwrap();
+                        let contents = response.bytes().await.unwrap();
+
+                        file.write_all(&contents).unwrap();
+                        update_clone.store(false, Ordering::SeqCst);
+                    }
+                }
+            }
             match LeagueClientConnector::parse_lockfile() {
                 Ok(lockfile) => {
                     let mut status = connection_status.lock().unwrap();
