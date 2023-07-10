@@ -455,7 +455,7 @@ async fn update_checker(update_status: Arc<Mutex<String>>) -> Result<String, Box
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
-        .header("User-Agent", "reqwest")
+        .header("User-Agent", format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION")))
         .send()
         .await?;
     let json = response.json::<serde_json::Value>().await?;
@@ -517,18 +517,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let update = update_clone.load(Ordering::SeqCst);
 
             if update {
-                let client = reqwest::Client::builder()
-                    .default_headers({
-                        let mut headers = reqwest::header::HeaderMap::new();
-                        headers.insert(
-                            reqwest::header::USER_AGENT,
-                            reqwest::header::HeaderValue::from_str("CircuitWatcher/2.1.0 (Rust)")
-                                .unwrap(),
-                        );
-                        headers
-                    })
-                    .build()
-                    .unwrap();
+                let client = reqwest::Client::new();
 
                 let owner = "tacticaldeuce";
                 let repo = "circuit-watcher";
@@ -537,7 +526,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "https://api.github.com/repos/{}/{}/releases/latest",
                     owner, repo
                 );
-                let response = client.get(&url).send().await.unwrap();
+                let response = client.get(&url).header("User-Agent", format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION"))).send().await.unwrap();
                 let status = response.status();
                 let body: serde_json::Value = response.json().await.unwrap();
                 let release: Release = serde_json::from_value(body).unwrap();
