@@ -127,6 +127,25 @@ impl eframe::App for GUI {
         let gameflow_status = self.gameflow_status.lock().unwrap();
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.menu_button("Options", |ui| {
+                    ui.menu_button("Theme", |ui| {
+                        if ui.button("Dark Theme").clicked() {
+                            ctx.set_visuals(egui::Visuals::dark());
+                            ui.close_menu();
+                        }
+                        if ui.button("Light Theme").clicked() {
+                            ctx.set_visuals(egui::Visuals::light());
+                            ui.close_menu();
+                        }
+                    });
+                });
+            });
+
+            ui.vertical(|ui| {
+                ui.add_space(5.0);
+            });
+
             ui.heading("Circuit Watcher");
 
             ui.collapsing("App Settings", |ui| {
@@ -373,6 +392,20 @@ impl eframe::App for GUI {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         std::process::exit(0);
+    }
+}
+
+fn hide_console_window() {
+    use std::ptr;
+    use winapi::um::wincon::GetConsoleWindow;
+    use winapi::um::winuser::{ShowWindow, SW_HIDE};
+
+    let window = unsafe { GetConsoleWindow() };
+    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
+    if window != ptr::null_mut() {
+        unsafe {
+            ShowWindow(window, SW_HIDE);
+        }
     }
 }
 
@@ -804,18 +837,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     eframe::run_native("Circuit Watcher", options, Box::new(|_cc| Box::new(app)))?;
 
     Ok(())
-}
-
-fn hide_console_window() {
-    use std::ptr;
-    use winapi::um::wincon::GetConsoleWindow;
-    use winapi::um::winuser::{ShowWindow, SW_HIDE};
-
-    let window = unsafe { GetConsoleWindow() };
-    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
-    if window != ptr::null_mut() {
-        unsafe {
-            ShowWindow(window, SW_HIDE);
-        }
-    }
 }
