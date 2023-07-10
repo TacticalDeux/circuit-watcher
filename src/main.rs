@@ -735,6 +735,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 }
                             }
 
+                            if champion_picks.len() == 1 {
+                                continue;
+                            }
+
                             if !champion_picks.get(1).unwrap().1.is_empty() {
                                 let pick_champ_info: serde_json::Value = rest_client
                                     .get(format!(
