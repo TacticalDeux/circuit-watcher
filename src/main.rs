@@ -22,8 +22,11 @@ pub struct GUI {
     ban_picks: Arc<Mutex<Option<(u32, String)>>>,
     champions: Vec<Champion>,
     gameflow_status: Arc<Mutex<String>>,
+    show_popup: bool,
 
     connection_status: Arc<Mutex<Option<String>>>,
+    update_status: Arc<Mutex<String>>,
+    current_version: Arc<Mutex<String>>,
 
     clear_label_timer: Option<std::time::Instant>,
     pick_not_found_label_timer: Option<std::time::Instant>,
@@ -65,6 +68,17 @@ struct ActionResponseData {
     r#type: String,
 }
 
+#[derive(Deserialize)]
+struct Release {
+    assets: Vec<Asset>,
+}
+
+#[derive(Deserialize)]
+struct Asset {
+    name: String,
+    browser_download_url: String,
+}
+
 impl GUI {
     fn new(/*cc: &eframe::CreationContext<'_>*/) -> Self {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
@@ -96,6 +110,9 @@ impl GUI {
             champions,
             text: String::new().to_owned(),
             gameflow_status: Arc::new(Mutex::new(String::new())),
+            update_status: Arc::new(Mutex::new(String::new())),
+            current_version: Arc::new(Mutex::new(String::new())),
+            show_popup: true,
         }
     }
 }
@@ -125,6 +142,8 @@ impl eframe::App for GUI {
         let mut ban_picks = self.ban_picks.lock().unwrap();
         let connection_status = self.connection_status.lock().unwrap();
         let gameflow_status = self.gameflow_status.lock().unwrap();
+        let update_status = self.update_status.lock().unwrap().clone();
+        let current_version = self.current_version.lock().unwrap().clone();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -140,10 +159,53 @@ impl eframe::App for GUI {
                         }
                     });
                 });
+                if update_status.contains("outdated") {
+                    if ui.button("Update").clicked() {
+                        let client = reqwest::blocking::Client::new();
+                        let owner = "tacticaldeuce";
+                        let repo = "circuit-watcher";
+
+                        // Make a GET request to the GitHub API to retrieve release information
+                        let url = format!(
+                            "https://api.github.com/repos/{}/{}/releases/latest",
+                            owner, repo
+                        );
+                        let response = client
+                            .get(&url)
+                            .header("Accept", "application/vnd.github.v3+json")
+                            .send()
+                            .unwrap();
+
+                        if response.status().is_success() {
+                            let release: Release = response.json().unwrap();
+
+                            for asset in release.assets {
+                                let asset_url = asset.browser_download_url;
+                                let mut response = client.get(&asset_url).send().unwrap();
+
+                                // Save the downloaded asset to a desired location
+                                let file_name = asset.name;
+                                let mut file = std::fs::File::create(&file_name).unwrap();
+                                response.copy_to(&mut file).unwrap();
+
+                                egui::Window::new("Updated")
+                                    .open(&mut self.show_popup)
+                                    .show(ctx, |ui| {
+                                        ui.label("New update has been downloaded successfully to the folder.");
+                                        if ui.button("Close").clicked() {
+                                            std::process::exit(0);
+                                        }
+                                    });
+                            }
+                        }
+                    }
+                }
+                ui.add_space(ui.available_size().x - ui.spacing().item_spacing.x * 3.7);
+                ui.weak(format!("v{}", current_version));
             });
 
             ui.vertical(|ui| {
-                ui.add_space(5.0);
+                ui.add_space(4.5);
             });
 
             ui.heading("Circuit Watcher");
@@ -382,7 +444,8 @@ impl eframe::App for GUI {
             });
 
             ui.vertical_centered_justified(|ui| {
-                ui.add_space(ui.available_size().y - ui.spacing().item_spacing.y * 2.0);
+                ui.add_space(ui.available_size().y - ui.spacing().item_spacing.y * 8.5);
+                ui.weak(update_status);
                 if let Some(status) = connection_status.clone() {
                     ui.weak(status.clone());
                 }
@@ -393,6 +456,38 @@ impl eframe::App for GUI {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         std::process::exit(0);
     }
+}
+
+async fn update_checker(update_status: Arc<Mutex<String>>) -> Result<String, Box<dyn Error>> {
+    let repo_owner = "tacticaldeuce";
+    let repo_name = "circuit-watcher";
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        repo_owner, repo_name
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("User-Agent", "reqwest")
+        .send()
+        .await?;
+    let json = response.json::<serde_json::Value>().await?;
+
+    let latest_tag = json["tag_name"].as_str().unwrap();
+
+    let current_version = env!("CARGO_PKG_VERSION");
+
+    let mut update_status = update_status.lock().unwrap();
+
+    if !latest_tag.contains(current_version) {
+        *update_status =
+            format!("Program is outdated the latest version is {}", latest_tag).to_owned();
+    } else {
+        *update_status = "Program is up to date.".to_owned();
+    }
+
+    Ok(current_version.to_owned())
 }
 
 fn hide_console_window() {
@@ -426,6 +521,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let pick_ban_selection_clone = Arc::clone(&app.pick_ban_selection);
     let rune_page_change_clone = Arc::clone(&app.rune_page_selection);
     let auto_accept_clone = Arc::clone(&app.auto_accept);
+    let update_status_clone = Arc::clone(&app.update_status);
+    let current_version_clone = Arc::clone(&app.current_version);
 
     tokio::spawn(async move {
         loop {
@@ -448,6 +545,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tokio::spawn(async move {
         let status = connection_status_clone.lock().unwrap().clone();
+        let current_version_clone = Arc::clone(&current_version_clone);
+
+        *current_version_clone.lock().unwrap() = update_checker(update_status_clone).await.unwrap();
 
         // Both of this while loops are to ensure there is a viable connection to the League Client
         while status.is_none() {
