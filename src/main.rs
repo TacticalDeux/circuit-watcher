@@ -187,7 +187,7 @@ impl eframe::App for GUI {
                         });
                     }
                 }
-                ui.add_space(ui.available_size().x - ui.spacing().item_spacing.x * 3.7);
+                ui.add_space(ui.available_size().x - ui.spacing().item_spacing.x * 4.5);
                 ui.weak(format!("v{}", current_version));
             });
 
@@ -295,7 +295,7 @@ impl eframe::App for GUI {
                                     .collect();
 
                                 if !matching_champions.is_empty() {
-                                    ui.push_id("pick name suggestion", |ui| { // this is done to ensure no id clash
+                                    ui.push_id("pick suggestion", |ui| { // this is done to ensure no id clash
                                         eframe::egui::ComboBox::from_label("Name Suggestions")
                                         .selected_text(matching_champions[0].clone())
                                         .width(ui.available_width() / 3.0)
