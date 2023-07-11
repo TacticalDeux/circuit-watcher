@@ -277,6 +277,39 @@ impl eframe::App for GUI {
                                 TextEdit::singleline(&mut self.pick_text)
                                     .hint_text("Press enter to skip."),
                             );
+
+                            if !self.pick_text.is_empty() {
+                                let pick_text_cleaned = self
+                                    .pick_text
+                                    .trim()
+                                    .replace(" ", "")
+                                    .as_str()
+                                    .replace("'", "")
+                                    .to_lowercase();
+
+                                let matching_champions: Vec<String> = self.champions.iter()
+                                    .filter(|champion| {
+                                        champion.name.to_lowercase().starts_with(&pick_text_cleaned)
+                                    })
+                                    .map(|champion| champion.name.clone())
+                                    .collect();
+
+                                if !matching_champions.is_empty() {
+                                    ui.push_id("pick name suggestion", |ui| { // this is done to ensure no id clash
+                                        eframe::egui::ComboBox::from_label("Name Suggestions")
+                                        .selected_text(matching_champions[0].clone())
+                                        .width(ui.available_width() / 3.0)
+                                        .show_ui(ui, |ui| {
+                                            for suggestion in matching_champions {
+                                                if ui.selectable_value(&mut self.pick_text, suggestion.clone(), suggestion).clicked() {
+                                                    text_edit_picks.request_focus();
+                                                }
+                                            }
+                                        });
+                                    });
+                                }
+                            }
+
                             if text_edit_picks.lost_focus()
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
                             {
@@ -331,6 +364,36 @@ impl eframe::App for GUI {
                                 TextEdit::singleline(&mut self.ban_text)
                                     .hint_text("Press enter to skip."),
                             );
+
+                            if !self.ban_text.is_empty() {
+                                let ban_text_cleaned = self
+                                    .ban_text
+                                    .trim()
+                                    .replace(" ", "")
+                                    .as_str()
+                                    .replace("'", "")
+                                    .to_lowercase();
+
+                                let matching_champions: Vec<String> = self.champions.iter()
+                                    .filter(|champion| {
+                                        champion.name.to_lowercase().starts_with(&ban_text_cleaned)
+                                    })
+                                    .map(|champion| champion.name.clone())
+                                    .collect();
+
+                                if !matching_champions.is_empty() {
+                                    eframe::egui::ComboBox::from_label("Name Suggestions")
+                                    .selected_text(matching_champions[0].clone())
+                                    .width(ui.available_width() / 3.0)
+                                    .show_ui(ui, |ui| {
+                                        for suggestion in matching_champions {
+                                            if ui.selectable_value(&mut self.ban_text, suggestion.clone(), suggestion).clicked() {
+                                                text_edit_bans.request_focus();
+                                            }
+                                        }
+                                    });
+                                }
+                            }
 
                             if text_edit_bans.lost_focus()
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
