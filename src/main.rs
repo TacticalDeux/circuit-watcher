@@ -456,7 +456,10 @@ async fn update_checker(update_status: Arc<Mutex<String>>) -> Result<String, Box
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
-        .header("User-Agent", format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION")),
+        )
         .send()
         .await?;
     let json = response.json::<serde_json::Value>().await?;
@@ -529,7 +532,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "https://api.github.com/repos/{}/{}/releases/latest",
                     owner, repo
                 );
-                let response = client.get(&url).header("User-Agent", format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION"))).send().await.unwrap();
+                let response = client
+                    .get(&url)
+                    .header(
+                        "User-Agent",
+                        format!("CircuitWatcher/{} (Rust)", env!("CARGO_PKG_VERSION")),
+                    )
+                    .send()
+                    .await
+                    .unwrap();
                 let status = response.status();
                 let body: serde_json::Value = response.json().await.unwrap();
                 let release: Release = serde_json::from_value(body).unwrap();
@@ -543,7 +554,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let file_name = asset.name.clone();
                         let mut file = std::fs::File::create(&file_name).unwrap();
                         let contents = response.bytes().await.unwrap();
-                        
+
                         file.write_all(&contents).unwrap();
 
                         *asset_name.lock().unwrap() = asset.name.clone();
