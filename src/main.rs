@@ -28,9 +28,9 @@ pub struct GUI {
     connection_status: Arc<Mutex<Option<String>>>,
     update_status: Arc<Mutex<String>>,
     current_version: Arc<Mutex<String>>,
+    asset_name: Arc<Mutex<String>>,
 
     update_button_clicked: bool,
-    update_click_time: Option<std::time::Instant>,
     clear_label_timer: Option<std::time::Instant>,
     pick_not_found_label_timer: Option<std::time::Instant>,
     ban_not_found_label_timer: Option<std::time::Instant>,
@@ -117,7 +117,7 @@ impl GUI {
             current_version: Arc::new(Mutex::new(String::new())),
             update: Arc::new(AtomicBool::new(false)),
             update_button_clicked: false,
-            update_click_time: None,
+            asset_name: Arc::new(Mutex::new("champions.json".to_owned())), // champions.json will always be in the folder and has a really small size.
         }
     }
 }
@@ -167,23 +167,24 @@ impl eframe::App for GUI {
                 if update_status.contains("outdated") {
                     if ui.button("Update").clicked() {
                         self.update_button_clicked = true;
-                        self.update_click_time = Some(std::time::Instant::now());
                         self.update.store(true, Ordering::SeqCst);
                     }
-                    if self.update_button_clicked {
-                        let elapsed = self.update_click_time.unwrap().elapsed();
+                    let asset_name = self.asset_name.lock().unwrap().clone();
+                    let asset_size = std::fs::metadata(&asset_name).unwrap().len();
 
-                        if elapsed >= std::time::Duration::from_secs(5) {
-                            egui::Window::new("Updated").open(&mut true).show(ctx, |ui| {
-                                ui.label(
-                                    "New update has been downloaded successfully to this program's folder.",
-                                );
-                                ui.label("Press the close button to terminate the program.");
-                                if ui.button("Close").clicked() {
-                                    std::process::exit(0);
-                                }
+                    if self.update_button_clicked && asset_size / 1024 > 2000 {
+                        egui::Window::new("Updated").open(&mut true).show(ctx, |ui| {
+                            ui.label(
+                                "New update has been downloaded successfully to this program's folder.",
+                            );
+                            ui.label("Press the close button to terminate the program.");
+                            ui.vertical(|ui| {
+                                ui.add_space(8.0);
                             });
-                        }
+                            if ui.button("Close").clicked() {
+                                std::process::exit(0);
+                            }
+                        });
                     }
                 }
                 ui.add_space(ui.available_size().x - ui.spacing().item_spacing.x * 3.7);
@@ -510,11 +511,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let update_status_clone = Arc::clone(&app.update_status);
     let current_version_clone = Arc::clone(&app.current_version);
     let update_clone = Arc::clone(&app.update);
+    let asset_name_clone = Arc::clone(&app.asset_name);
 
     tokio::spawn(async move {
         loop {
             hide_console_window();
             let update = update_clone.load(Ordering::SeqCst);
+            let asset_name = Arc::clone(&asset_name_clone);
 
             if update {
                 let client = reqwest::Client::builder()
@@ -548,12 +551,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                         let response = client.get(&asset_url).send().await.unwrap();
 
-                        // Save the downloaded asset to a desired location
-                        let file_name = asset.name;
-                        let mut file = std::fs::File::create(format!("./{}", &file_name)).unwrap();
+                        let file_name = asset.name.clone();
+                        let mut file = std::fs::File::create(&file_name).unwrap();
                         let contents = response.bytes().await.unwrap();
-
+                        
                         file.write_all(&contents).unwrap();
+
+                        *asset_name.lock().unwrap() = asset.name.clone();
                         update_clone.store(false, Ordering::SeqCst);
                     }
                 }
