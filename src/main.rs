@@ -1,5 +1,6 @@
 use eframe::egui;
 use egui::TextEdit;
+use egui_extras;
 use http::{header::AUTHORIZATION, HeaderValue};
 use league_client_connector::LeagueClientConnector;
 use reqwest::{header, ClientBuilder};
@@ -94,7 +95,8 @@ impl GUI {
         let rune_page_selection = Arc::new(AtomicBool::new(false));
         let auto_accept = Arc::new(AtomicBool::new(false));
         let connection_status = Arc::new(Mutex::new(None));
-        let json_data = std::fs::read_to_string("champions.json").expect("Failed to read file");
+        let json_data =
+            std::fs::read_to_string("./utils/champions.json").expect("Failed to read file");
         let champions: Vec<Champion> =
             serde_json::from_str(&json_data).expect("Failed to parse JSON");
 
@@ -117,13 +119,13 @@ impl GUI {
             current_version: Arc::new(Mutex::new(String::new())),
             update: Arc::new(AtomicBool::new(false)),
             update_button_clicked: false,
-            asset_name: Arc::new(Mutex::new("champions.json".to_owned())), // champions.json will always be in the folder and has a really small size.
+            asset_name: Arc::new(Mutex::new("./utils/champions.json".to_owned())), // champions.json will always be in the folder and has a really small size.
         }
     }
 }
 
 impl eframe::App for GUI {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let pick_ban_selection = self.pick_ban_selection.load(Ordering::SeqCst);
         if let Some(timer) = self.clear_label_timer {
             let elapsed = timer.elapsed();
@@ -150,20 +152,25 @@ impl eframe::App for GUI {
         let update_status = self.update_status.lock().unwrap().clone();
         let current_version = self.current_version.lock().unwrap().clone();
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.menu_button("Options", |ui| {
-                    ui.menu_button("Theme", |ui| {
-                        if ui.button("Dark Theme").clicked() {
-                            ctx.set_visuals(egui::Visuals::dark());
-                            ui.close_menu();
-                        }
-                        if ui.button("Light Theme").clicked() {
-                            ctx.set_visuals(egui::Visuals::light());
-                            ui.close_menu();
-                        }
-                    });
+        egui::TopBottomPanel::top("top panel").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                let style: egui::Style = (*ui.ctx().style()).clone();
+                let new_visuals = style.visuals.light_dark_small_toggle_button(ui);
+                if let Some(visuals) = new_visuals {
+                    ui.ctx().set_visuals(visuals);
+                }
+
+                ui.menu_button("File", |ui| {
+                    // TODO: add persistent settings
+                    // if ui.button("Save Settings").clicked() {
+
+                    // }
+
+                    if ui.button("Quit").clicked() {
+                        frame.close();
+                    }
                 });
+
                 if update_status.contains("outdated") {
                     if ui.button("Update").clicked() {
                         self.update_button_clicked = true;
@@ -172,29 +179,40 @@ impl eframe::App for GUI {
                     let asset_name = self.asset_name.lock().unwrap().clone();
                     let asset_size = std::fs::metadata(&asset_name).unwrap().len();
 
-                    if self.update_button_clicked && asset_size / 1024 > 2000 {
-                        egui::Window::new("Updated").open(&mut true).show(ctx, |ui| {
-                            ui.label(
-                                "New update has been downloaded successfully to this program's folder.",
-                            );
-                            ui.label("Press the close button to terminate the program.");
-                            ui.vertical(|ui| {
-                                ui.add_space(8.0);
+                    if self.update_button_clicked {
+                        if asset_size / 1024 > 2000 {
+                            egui::Window::new("Updated").show(ctx, |ui| {
+                                ui.label(
+                                    "New update has been downloaded successfully to this program's folder.",
+                                );
+                                ui.label("Press the close button to terminate the program.");
+                                ui.vertical(|ui| {
+                                    ui.add_space(8.0);
+                                });
+                                if ui.button("Close").clicked() {
+                                    frame.close();
+                                }
                             });
-                            if ui.button("Close").clicked() {
-                                std::process::exit(0);
-                            }
-                        });
+                        } else {
+                            ui.spinner().highlight();
+                        }
                     }
                 }
-                ui.add_space(ui.available_size().x - ui.spacing().item_spacing.x * 4.5);
-                ui.weak(format!("v{}", current_version));
-            });
 
-            ui.vertical(|ui| {
-                ui.add_space(4.5);
-            });
+                ui.add_space(ui.available_width() - 35.0);
 
+                ui.menu_button("About", |ui| {
+                    ui.label("circuit-watcher");
+                    ui.label(format!("version {}", current_version));
+                    ui.add(egui::Hyperlink::from_label_and_url(
+                        "source code",
+                        "https://github.com/TacticalDeuce/circuit-watcher",
+                    ));
+                });
+            });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Circuit Watcher");
 
             ui.collapsing("App Settings", |ui| {
@@ -208,6 +226,20 @@ impl eframe::App for GUI {
                         ui.strong("Picks and bans cleared.");
                     }
                 });
+
+
+                // TODO: finish implementing summoner spell selection
+                // let img = egui_extras::RetainedImage::from_image_bytes(
+                //     "barrier_hd",
+                //     include_bytes!("../utils/summoner icons/Barrier_HD.png")
+                // ).unwrap();
+
+                // ui.horizontal(|ui| {
+                //     ui.menu_image_button(img.texture_id(ctx), egui::vec2(25.0, 25.0), |ui| {
+                //         ui.label("Test");
+                //         ui.label("Test 2");
+                //     });
+                // });
 
                 ui.horizontal(|ui| {
                     let auto_accept_label = if self.auto_accept.load(Ordering::SeqCst) {
@@ -287,7 +319,9 @@ impl eframe::App for GUI {
                                     .replace("'", "")
                                     .to_lowercase();
 
-                                let matching_champions: Vec<String> = self.champions.iter()
+                                let matching_champions: Vec<String> = self
+                                    .champions
+                                    .iter()
                                     .filter(|champion| {
                                         champion.name.to_lowercase().starts_with(&pick_text_cleaned)
                                     })
@@ -295,17 +329,25 @@ impl eframe::App for GUI {
                                     .collect();
 
                                 if !matching_champions.is_empty() {
-                                    ui.push_id("pick suggestion", |ui| { // this is done to ensure no id clash
+                                    ui.push_id("pick suggestion", |ui| {
+                                        // this is done to ensure no id clash
                                         eframe::egui::ComboBox::from_label("Name Suggestions")
-                                        .selected_text(matching_champions[0].clone())
-                                        .width(ui.available_width() / 3.0)
-                                        .show_ui(ui, |ui| {
-                                            for suggestion in matching_champions {
-                                                if ui.selectable_value(&mut self.pick_text, suggestion.clone(), suggestion).clicked() {
-                                                    text_edit_picks.request_focus();
+                                            .selected_text(matching_champions[0].clone())
+                                            .width(ui.available_width() / 3.0)
+                                            .show_ui(ui, |ui| {
+                                                for suggestion in matching_champions {
+                                                    if ui
+                                                        .selectable_value(
+                                                            &mut self.pick_text,
+                                                            suggestion.clone(),
+                                                            suggestion,
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        text_edit_picks.request_focus();
+                                                    }
                                                 }
-                                            }
-                                        });
+                                            });
                                     });
                                 }
                             }
@@ -374,7 +416,9 @@ impl eframe::App for GUI {
                                     .replace("'", "")
                                     .to_lowercase();
 
-                                let matching_champions: Vec<String> = self.champions.iter()
+                                let matching_champions: Vec<String> = self
+                                    .champions
+                                    .iter()
                                     .filter(|champion| {
                                         champion.name.to_lowercase().starts_with(&ban_text_cleaned)
                                     })
@@ -383,15 +427,22 @@ impl eframe::App for GUI {
 
                                 if !matching_champions.is_empty() {
                                     eframe::egui::ComboBox::from_label("Name Suggestions")
-                                    .selected_text(matching_champions[0].clone())
-                                    .width(ui.available_width() / 3.0)
-                                    .show_ui(ui, |ui| {
-                                        for suggestion in matching_champions {
-                                            if ui.selectable_value(&mut self.ban_text, suggestion.clone(), suggestion).clicked() {
-                                                text_edit_bans.request_focus();
+                                        .selected_text(matching_champions[0].clone())
+                                        .width(ui.available_width() / 3.0)
+                                        .show_ui(ui, |ui| {
+                                            for suggestion in matching_champions {
+                                                if ui
+                                                    .selectable_value(
+                                                        &mut self.ban_text,
+                                                        suggestion.clone(),
+                                                        suggestion,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    text_edit_bans.request_focus();
+                                                }
                                             }
-                                        }
-                                    });
+                                        });
                                 }
                             }
 
@@ -669,7 +720,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut lockfile = LeagueClientConnector::parse_lockfile().unwrap();
         let mut auth_header =
             HeaderValue::from_str(format!("Basic {}", lockfile.b64_auth).as_str()).unwrap();
-        let cert = reqwest::Certificate::from_pem(include_bytes!("../riotgames.pem")).unwrap();
+        let cert =
+            reqwest::Certificate::from_pem(include_bytes!("../utils/riotgames.pem")).unwrap();
         let mut headers = header::HeaderMap::new();
 
         headers.insert(AUTHORIZATION, auth_header.clone());
