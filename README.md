@@ -24,6 +24,7 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - Queue auto-accept.
 - Toggeable auto-pick and auto-ban.
 - Version checking and downloading from the GUI.
+- Auto summoneer spell selection.
 - ~~Toggeable rune page change (based on auto-pick). Only works on non-recommended rune pages, will delete rune page if it's data is auto-recommended, can be bypassed by using auto-recommendation after locking champ.~~ TODO
 
 ### TODO
@@ -32,10 +33,12 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - [X] Terminal timestamps (mostly for debugging purposes)
 - [X] Champ auto-pick
 - [X] Champ auto-ban
+- [X] Auto summoner spell selection
+- [ ] Persistent settings 
 - [ ] Pick runes depending on champ auto-locked (might reduce pick alternatives to only one instead of two)
 - [ ] Role check when auto-picking so champs aren't locked/banned if you didn't get main role
 - [ ] Maybe queue rejoining?
-- [X] Maybe an actual GUI (veering off of CLI)?
+- [X] GUI
 
 ***
 
