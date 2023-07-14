@@ -24,7 +24,7 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - Queue auto-accept.
 - Toggeable auto-pick and auto-ban.
 - Version checking and downloading from the GUI.
-- Auto summoneer spell selection. Will check assigned role and spell selection and,  
+- Auto summoner spell selection. Will check assigned role and spell selection and,  
   if the role is jungle and smite is not selected yet, change whichever spell that is neither ghost nor flash to smite.  
   If both slots are ghost and flash (or vice versa) it will default smite to the first slot.
 - ~~Toggeable rune page change (based on auto-pick). Only works on non-recommended rune pages, will delete rune page if it's data is auto-recommended, can be bypassed by using auto-recommendation after locking champ.~~ TODO
