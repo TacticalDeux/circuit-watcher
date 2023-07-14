@@ -1,0 +1,82 @@
+[
+  {
+    "id": "SummonerBarrier",
+    "key": 21,
+    "name": "Barrier"
+  },
+  {
+    "id": "SummonerBoost",
+    "key": 1,
+    "name": "Cleanse"
+  },
+  {
+    "id": "SummonerDot",
+    "key": 14,
+    "name": "Ignite"
+  },
+  {
+    "id": "SummonerExhaust",
+    "key": 3,
+    "name": "Exhaust"
+  },
+  {
+    "id": "SummonerFlash",
+    "key": 4,
+    "name": "Flash"
+  },
+  {
+    "id": "SummonerHaste",
+    "key": 6,
+    "name": "Ghost"
+  },
+  {
+    "id": "SummonerHeal",
+    "key": 7,
+    "name": "Heal"
+  },
+  {
+    "id": "SummonerMana",
+    "key": 13,
+    "name": "Clarity"
+  },
+  {
+    "id": "SummonerPoroRecall",
+    "key": 30,
+    "name": "To the King!"
+  },
+  {
+    "id": "SummonerPoroThrow",
+    "key": 31,
+    "name": "Poro Toss"
+  },
+  {
+    "id": "SummonerSmite",
+    "key": 11,
+    "name": "Smite"
+  },
+  {
+    "id": "SummonerSnowURFSnowball_Mark",
+    "key": 39,
+    "name": "Mark"
+  },
+  {
+    "id": "SummonerSnowball",
+    "key": 32,
+    "name": "Mark"
+  },
+  {
+    "id": "SummonerTeleport",
+    "key": 12,
+    "name": "Teleport"
+  },
+  {
+    "id": "Summoner_UltBookPlaceholder",
+    "key": 54,
+    "name": "Placeholder"
+  },
+  {
+    "id": "Summoner_UltBookSmitePlaceholder",
+    "key": 55,
+    "name": "Placeholder and Attack-Smite"
+  }
+]

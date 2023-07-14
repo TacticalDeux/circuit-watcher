@@ -1,10 +1,11 @@
 use eframe::egui;
-use egui::TextEdit;
-use egui_extras;
+use egui::{vec2, TextEdit};
+use egui_extras::{self, RetainedImage};
 use http::{header::AUTHORIZATION, HeaderValue};
 use league_client_connector::LeagueClientConnector;
 use reqwest::{header, ClientBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::Write;
 use std::sync::{
@@ -12,11 +13,11 @@ use std::sync::{
     Arc, Mutex,
 };
 
-#[derive(Debug)]
 pub struct GUI {
     pick_ban_selection: Arc<AtomicBool>,
     rune_page_selection: Arc<AtomicBool>,
     auto_accept: Arc<AtomicBool>,
+    spell_selection: Arc<AtomicBool>,
     pick_text: String,
     ban_text: String,
     text: String,
@@ -25,6 +26,10 @@ pub struct GUI {
     champions: Vec<Champion>,
     gameflow_status: Arc<Mutex<String>>,
     update: Arc<AtomicBool>,
+    images: HashMap<String, RetainedImage>,
+    selected_image1: Arc<Mutex<Option<String>>>,
+    selected_image2: Arc<Mutex<Option<String>>>,
+    no_icon_img: RetainedImage,
 
     connection_status: Arc<Mutex<Option<String>>>,
     update_status: Arc<Mutex<String>>,
@@ -72,6 +77,15 @@ struct ActionResponseData {
     r#type: String,
 }
 
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug, Clone)]
+struct SpellData {
+    cellId: u32,
+    assignedPosition: String,
+    spell1Id: u32,
+    spell2Id: u32,
+}
+
 #[derive(Deserialize, Debug)]
 struct Release {
     assets: Vec<Asset>,
@@ -81,6 +95,12 @@ struct Release {
 struct Asset {
     name: String,
     browser_download_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct SummonerSpell {
+    key: u32,
+    name: String,
 }
 
 impl GUI {
@@ -94,11 +114,33 @@ impl GUI {
         let pick_ban_selection = Arc::new(AtomicBool::new(false));
         let rune_page_selection = Arc::new(AtomicBool::new(false));
         let auto_accept = Arc::new(AtomicBool::new(false));
+        let summoner_spell_selection = Arc::new(AtomicBool::new(false));
         let connection_status = Arc::new(Mutex::new(None));
         let json_data =
             std::fs::read_to_string("./utils/champions.json").expect("Failed to read file");
         let champions: Vec<Champion> =
             serde_json::from_str(&json_data).expect("Failed to parse JSON");
+
+        let mut images: HashMap<String, RetainedImage> = HashMap::new();
+
+        let barrier_img = image_loader("Barrier", include_bytes!("../utils/images/barrier.png"));
+        let exhaust_img = image_loader("Exhaust", include_bytes!("../utils/images/exhaust.png"));
+        let flash_img = image_loader("Flash", include_bytes!("../utils/images/flash.png"));
+        let ghost_img = image_loader("Ghost", include_bytes!("../utils/images/ghost.png"));
+        let heal_img = image_loader("Heal", include_bytes!("../utils/images/heal.png"));
+        let ignite_img = image_loader("Ignite", include_bytes!("../utils/images/ignite.png"));
+        let smite_img = image_loader("Smite", include_bytes!("../utils/images/smite.png"));
+        let teleport_img = image_loader("Teleport", include_bytes!("../utils/images/teleport.png"));
+        let no_icon_img = image_loader("no_icon", include_bytes!("../utils/images/no_icon.png")).1;
+
+        images.insert(barrier_img.0, barrier_img.1);
+        images.insert(exhaust_img.0, exhaust_img.1);
+        images.insert(flash_img.0, flash_img.1);
+        images.insert(ghost_img.0, ghost_img.1);
+        images.insert(heal_img.0, heal_img.1);
+        images.insert(ignite_img.0, ignite_img.1);
+        images.insert(smite_img.0, smite_img.1);
+        images.insert(teleport_img.0, teleport_img.1);
 
         Self {
             pick_ban_selection,
@@ -120,6 +162,11 @@ impl GUI {
             update: Arc::new(AtomicBool::new(false)),
             update_button_clicked: false,
             asset_name: Arc::new(Mutex::new("./utils/champions.json".to_owned())), // champions.json will always be in the folder and has a really small size.
+            images,
+            selected_image1: Arc::new(Mutex::new(None)),
+            selected_image2: Arc::new(Mutex::new(None)),
+            no_icon_img,
+            spell_selection: summoner_spell_selection,
         }
     }
 }
@@ -149,6 +196,8 @@ impl eframe::App for GUI {
         let mut ban_picks = self.ban_picks.lock().unwrap();
         let connection_status = self.connection_status.lock().unwrap();
         let gameflow_status = self.gameflow_status.lock().unwrap();
+        let mut selected_image1 = self.selected_image1.lock().unwrap();
+        let mut selected_image2 = self.selected_image2.lock().unwrap();
         let update_status = self.update_status.lock().unwrap().clone();
         let current_version = self.current_version.lock().unwrap().clone();
 
@@ -181,20 +230,23 @@ impl eframe::App for GUI {
 
                     if self.update_button_clicked {
                         if asset_size / 1024 > 2000 {
-                            egui::Window::new("Updated").show(ctx, |ui| {
-                                ui.label(
-                                    "New update has been downloaded successfully to this program's folder.",
-                                );
-                                ui.label("Press the close button to terminate the program.");
-                                ui.vertical(|ui| {
-                                    ui.add_space(8.0);
-                                });
-                                if ui.button("Close").clicked() {
-                                    frame.close();
-                                }
+                            egui::Window::new("Updated")
+                                .auto_sized()
+                                .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -25.0))
+                                .collapsible(false)
+                                .movable(false)
+                                .show(ctx, |ui| {
+                                    ui.label(
+                                        "New update has been downloaded successfully to this program's folder.",
+                                    );
+                                    ui.label("Press the close button to terminate the program.");
+
+                                    if ui.button("Close").clicked() {
+                                        frame.close();
+                                    }
                             });
                         } else {
-                            ui.spinner().highlight();
+                            ui.spinner();
                         }
                     }
                 }
@@ -227,19 +279,95 @@ impl eframe::App for GUI {
                     }
                 });
 
+                ui.horizontal(|ui| {
+                    let spell_selection_label = if self.spell_selection.load(Ordering::SeqCst) {
+                        "Spell Auto Selection: ON"
+                    } else {
+                        "Spell Auto Selection: OFF"
+                    };
 
-                // TODO: finish implementing summoner spell selection
-                // let img = egui_extras::RetainedImage::from_image_bytes(
-                //     "barrier_hd",
-                //     include_bytes!("../utils/summoner icons/Barrier_HD.png")
-                // ).unwrap();
+                    if ui
+                        .checkbox(
+                            &mut self.spell_selection.load(Ordering::SeqCst),
+                            spell_selection_label,
+                        )
+                        .clicked()
+                    {
+                        let current_state = self.spell_selection.load(Ordering::SeqCst);
+                        self.spell_selection.store(!current_state, Ordering::SeqCst);
+                    }
+                });
 
-                // ui.horizontal(|ui| {
-                //     ui.menu_image_button(img.texture_id(ctx), egui::vec2(25.0, 25.0), |ui| {
-                //         ui.label("Test");
-                //         ui.label("Test 2");
-                //     });
-                // });
+                ui.horizontal(|ui| {
+                    ui.menu_image_button(
+                        selected_image1
+                            .clone()
+                            .as_ref()
+                            .and_then(|key| self.images.get(key))
+                            .map(|img| img.texture_id(ctx))
+                            .unwrap_or(self.no_icon_img.texture_id(ctx)),
+                        egui::vec2(20.0, 20.0),
+                        |ui| {
+                            ui.horizontal(|ui| {
+                                for (key, image) in &self.images {
+                                    if ui
+                                        .add(egui::ImageButton::new(
+                                            image.texture_id(ctx),
+                                            egui::vec2(17.0, 17.0),
+                                        ))
+                                        .clicked()
+                                    {
+                                        if key == &selected_image2.clone().unwrap_or_default() {
+                                            let temp = selected_image2.clone();
+                                            *selected_image2 = selected_image1.clone();
+                                            *selected_image1 = temp;
+                                        } else {
+                                            *selected_image1 = Some(key.clone());
+                                        }
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                        },
+                    );
+
+                    ui.menu_image_button(
+                        selected_image2
+                            .clone()
+                            .as_ref()
+                            .and_then(|key| self.images.get(key))
+                            .map(|img| img.texture_id(ctx))
+                            .unwrap_or(self.no_icon_img.texture_id(ctx)),
+                        egui::vec2(20.0, 20.0),
+                        |ui| {
+                            ui.horizontal(|ui| {
+                                for (key, image) in &self.images {
+                                    if ui
+                                        .add(egui::ImageButton::new(
+                                            image.texture_id(ctx),
+                                            egui::vec2(17.0, 17.0),
+                                        ))
+                                        .clicked()
+                                    {
+                                        if key == &selected_image1.clone().unwrap_or_default() {
+                                            let temp = selected_image2.clone();
+                                            *selected_image2 = selected_image1.clone();
+                                            *selected_image1 = temp;
+                                        } else {
+                                            *selected_image2 = Some(key.clone());
+                                        }
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                        },
+                    );
+                });
+                if (selected_image1.clone().is_none() || selected_image2.clone().is_none())
+                    && self.spell_selection.load(Ordering::SeqCst)
+                {
+                    ui.strong("Both summoner spells need to be selected");
+                }
 
                 ui.horizontal(|ui| {
                     let auto_accept_label = if self.auto_accept.load(Ordering::SeqCst) {
@@ -608,6 +736,13 @@ fn hide_console_window() {
     }
 }
 
+fn image_loader(img_name: &str, img_bytes: &[u8]) -> (String, RetainedImage) {
+    (
+        img_name.to_string(),
+        RetainedImage::from_image_bytes(img_name, img_bytes).unwrap(),
+    )
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let options = eframe::NativeOptions {
@@ -629,6 +764,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let current_version_clone = Arc::clone(&app.current_version);
     let update_clone = Arc::clone(&app.update);
     let asset_name_clone = Arc::clone(&app.asset_name);
+    let selected_image1_clone = Arc::clone(&app.selected_image1);
+    let selected_image2_clone = Arc::clone(&app.selected_image2);
+    let spell_selection_clone = Arc::clone(&app.spell_selection);
 
     tokio::spawn(async move {
         loop {
@@ -731,6 +869,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .build()
             .unwrap();
 
+        let spells_data =
+            std::fs::read_to_string("./utils/summoner_spells.json").expect("Failed to read file");
+        let summoner_spells: Vec<SummonerSpell> =
+            serde_json::from_str(&spells_data).expect("Failed to parse JSON");
+
         let mut locked_champ = false;
         loop {
             if connection_status_clone
@@ -771,6 +914,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let pick_ban_selection = pick_ban_selection_clone.load(Ordering::SeqCst);
             let rune_change = rune_page_change_clone.load(Ordering::SeqCst);
             let auto_accept = auto_accept_clone.load(Ordering::SeqCst);
+            let spell1 = Arc::clone(&selected_image1_clone);
+            let spell2 = Arc::clone(&selected_image2_clone);
+            let spell_selection = spell_selection_clone.load(Ordering::SeqCst);
 
             let gameflow: serde_json::Value = rest_client
                 .get(format!(
@@ -811,6 +957,93 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     *gameflow_status_clone.lock().unwrap() = "Match Found".to_owned();
                 }
                 Some("ChampSelect") => {
+                    if spell_selection {
+                        let spell1_clone = selected_image1_clone.lock().unwrap().clone();
+                        let spell2_clone = selected_image2_clone.lock().unwrap().clone();
+
+                        if spell1_clone.is_some() && spell2_clone.is_some() {
+                            let current_champ_select: serde_json::Value = rest_client
+                                .get(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/session",
+                                    lockfile.port
+                                ))
+                                .send()
+                                .await
+                                .unwrap()
+                                .json()
+                                .await
+                                .unwrap();
+
+                            let action_response: Vec<SpellData> =
+                                serde_json::from_value(current_champ_select["myTeam"].clone())
+                                    .unwrap();
+                            let filtered_action_data: Vec<SpellData> = action_response
+                                .iter()
+                                .filter(|data| {
+                                    data.cellId == current_champ_select["localPlayerCellId"]
+                                })
+                                .take(1)
+                                .cloned() // Limit to a maximum of 2 matches
+                                .collect();
+                            let extracted_action_data: (u32, u32, String) = filtered_action_data
+                                .iter()
+                                .map(|data| {
+                                    (data.spell1Id, data.spell2Id, data.assignedPosition.clone())
+                                })
+                                .next()
+                                .unwrap();
+                            if extracted_action_data.2.contains("jungle") {
+                                if spell1_clone.clone().unwrap() != "Smite".to_string()
+                                    || spell2_clone.clone().unwrap() != "Smite".to_string()
+                                {
+                                    if extracted_action_data.0 == 4 /*Flash*/ {
+                                        *spell2.lock().unwrap() = Some("Smite".to_owned());
+                                        *spell1.lock().unwrap() = Some("Flash".to_owned());
+                                    } else if extracted_action_data.0 == 6 /*Ghost*/{
+                                        *spell2.lock().unwrap() = Some("Smite".to_owned());
+                                        *spell1.lock().unwrap() = Some("Ghost".to_owned());
+                                    }
+                                    if extracted_action_data.1 == 4 {
+                                        *spell1.lock().unwrap() = Some("Smite".to_owned());
+                                        *spell2.lock().unwrap() = Some("Flash".to_owned());
+                                    } else if extracted_action_data.1 == 6 {
+                                        *spell1.lock().unwrap() = Some("Smite".to_owned());
+                                        *spell2.lock().unwrap() = Some("Ghost".to_owned());
+                                    } else {
+                                        *spell1.lock().unwrap() = Some("Smite".to_owned());
+                                    }
+                                }
+                            }
+                            let spell1_clone_updated =
+                                selected_image1_clone.lock().unwrap().clone();
+                            let spell2_clone_updated =
+                                selected_image2_clone.lock().unwrap().clone();
+                            let spell1_info = summoner_spells
+                                .iter()
+                                .find(|spell| spell.name == spell1_clone_updated.clone().unwrap())
+                                .unwrap();
+                            let spell2_info = summoner_spells
+                                .iter()
+                                .find(|spell| spell.name == spell2_clone_updated.clone().unwrap())
+                                .unwrap();
+
+                            let body = serde_json::json!({
+                                    "spell1Id": spell1_info.key,
+                                    "spell2Id": spell2_info.key
+                            });
+
+                            rest_client
+                                .patch(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/my-selection",
+                                    lockfile.port
+                                ))
+                                .json(&body)
+                                .send()
+                                .await
+                                .unwrap();
+                        }
+                    }
+
                     if pick_ban_selection {
                         *gameflow_status_clone.lock().unwrap() =
                             "Champion Selection with Auto-pick/ban ON".to_owned();
