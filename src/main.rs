@@ -681,7 +681,7 @@ impl eframe::App for GUI {
             });
         });
 
-        ctx.request_repaint();
+        ctx.request_repaint_after(tokio::time::Duration::from_millis(200));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
