@@ -680,6 +680,8 @@ impl eframe::App for GUI {
                 }
             });
         });
+
+        ctx.request_repaint();
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -935,11 +937,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some("Matchmaking") => {
                     *gameflow_status_clone.lock().unwrap() = "Looking for a match".to_owned();
                     locked_champ = false;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("Lobby") => {
                     *gameflow_status_clone.lock().unwrap() = "In Lobby".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("ReadyCheck") => {
                     if auto_accept {
@@ -952,7 +952,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .send()
                             .await
                             .unwrap();
-                        tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                     }
                     *gameflow_status_clone.lock().unwrap() = "Match Found".to_owned();
                 }
@@ -1212,7 +1211,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                             .await
                                             .unwrap();
                                         locked_champ = true;
-                                        tokio::time::sleep(tokio::time::Duration::from_secs(10))
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(1))
                                             .await;
                                     }
                                 }
@@ -1281,7 +1280,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                             .await
                                             .unwrap();
                                         locked_champ = true;
-                                        tokio::time::sleep(tokio::time::Duration::from_secs(10))
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(1))
                                             .await;
                                     }
                                 }
@@ -1290,7 +1289,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     *gameflow_status_clone.lock().unwrap() = "Champion Selection".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
                 Some("InProgress") => {
                     *gameflow_status_clone.lock().unwrap() = "Game in progress...".to_owned();
@@ -1298,7 +1296,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Some("WaitingForStats") => {
                     *gameflow_status_clone.lock().unwrap() = "Waiting for Stats".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 }
                 Some("PreEndOfGame") => {
                     *gameflow_status_clone.lock().unwrap() = "Game in progress...".to_owned();
@@ -1306,7 +1304,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Some("EndOfGame") => {
                     *gameflow_status_clone.lock().unwrap() = "Game Ending...".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
                 Some(unimplemented_phase) => {
                     *gameflow_status_clone.lock().unwrap() =
@@ -1315,7 +1313,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 None => {
                     *gameflow_status_clone.lock().unwrap() = "Idling...".to_owned();
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                 }
             }
         }
