@@ -1,6 +1,6 @@
 [package]
 name = "circuit-watcher"
-version = "2.3.1"
+version = "2.3.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,7 +10,7 @@ reqwest = { version = "0.11.18", features = ["json"]}
 tokio = { version = "1.28.2", features = ["full"]}
 winapi = { version = "0.3", features = ["wincon", "winuser"]}
 egui_extras = { version = "0.22.0", features = ["image"]}
-league-client-connector = { path="" }
+league-client-connector = { path="C:/Users/lautg/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rust-lcu-connector-0.1.3" }
 native-tls = "0.2.11"
 eframe = "0.22.0"
 egui = "0.22.0"
