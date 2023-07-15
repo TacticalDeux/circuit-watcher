@@ -32,6 +32,7 @@ pub struct GUI {
     selected_image1: Arc<Mutex<Option<String>>>,
     selected_image2: Arc<Mutex<Option<String>>>,
     no_icon_img: RetainedImage,
+    assigned_role: Arc<Mutex<Option<String>>>,
 
     connection_status: Arc<Mutex<Option<String>>>,
     update_status: Arc<Mutex<String>>,
@@ -81,7 +82,7 @@ struct ActionResponseData {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug, Clone)]
-struct SpellData {
+struct MyTeamData {
     cellId: u32,
     assignedPosition: String,
     spell1Id: u32,
@@ -169,6 +170,7 @@ impl GUI {
             selected_image2: Arc::new(Mutex::new(None)),
             no_icon_img,
             spell_selection: summoner_spell_selection,
+            assigned_role: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -672,6 +674,9 @@ impl eframe::App for GUI {
 
             ui.collapsing("Match State", |ui| {
                 ui.heading(format!("{}", gameflow_status.clone()));
+                if let Some(assigned_role) = self.assigned_role.lock().unwrap().clone() {
+                    ui.label(format!("Role: {}", assigned_role));
+                }
             });
 
             ui.vertical_centered_justified(|ui| {
@@ -683,7 +688,7 @@ impl eframe::App for GUI {
             });
         });
 
-        ctx.request_repaint_after(tokio::time::Duration::from_millis(200));
+        ctx.request_repaint_after(tokio::time::Duration::from_millis(500));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -771,6 +776,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let selected_image1_clone = Arc::clone(&app.selected_image1);
     let selected_image2_clone = Arc::clone(&app.selected_image2);
     let spell_selection_clone = Arc::clone(&app.spell_selection);
+    let assigned_role_clone = Arc::clone(&app.assigned_role);
 
     tokio::spawn(async move {
         loop {
@@ -921,6 +927,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let spell1 = Arc::clone(&selected_image1_clone);
             let spell2 = Arc::clone(&selected_image2_clone);
             let spell_selection = spell_selection_clone.load(Ordering::SeqCst);
+            let assigned_position = Arc::clone(&assigned_role_clone);
 
             let gameflow: serde_json::Value = rest_client
                 .get(format!(
@@ -937,10 +944,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             match phase {
                 Some("Matchmaking") => {
+                    *assigned_position.lock().unwrap() = None;
                     *gameflow_status_clone.lock().unwrap() = "Looking for a match".to_owned();
                     locked_champ = false;
                 }
                 Some("Lobby") => {
+                    *assigned_position.lock().unwrap() = None;
                     *gameflow_status_clone.lock().unwrap() = "In Lobby".to_owned();
                 }
                 Some("ReadyCheck") => {
@@ -958,74 +967,77 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     *gameflow_status_clone.lock().unwrap() = "Match Found".to_owned();
                 }
                 Some("ChampSelect") => {
+                    let current_champ_select: serde_json::Value = rest_client
+                        .get(format!(
+                            "https://127.0.0.1:{}/lol-champ-select/v1/session",
+                            lockfile.port
+                        ))
+                        .send()
+                        .await
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+
+                    let team_data_response: Vec<MyTeamData> =
+                        serde_json::from_value(current_champ_select["myTeam"].clone()).unwrap();
+                    let filtered_team_data: Vec<MyTeamData> = team_data_response
+                        .iter()
+                        .filter(|data| data.cellId == current_champ_select["localPlayerCellId"])
+                        .take(1)
+                        .cloned() // Limit to a maximum of 2 matches
+                        .collect();
+                    let extracted_team_data: (u32, u32, String) = filtered_team_data
+                        .iter()
+                        .map(|data| (data.spell1Id, data.spell2Id, data.assignedPosition.clone()))
+                        .next()
+                        .unwrap();
+
+                    *assigned_position.lock().unwrap() = Some(extracted_team_data.clone().2);
                     if spell_selection {
                         let spell1_clone = selected_image1_clone.lock().unwrap().clone();
                         let spell2_clone = selected_image2_clone.lock().unwrap().clone();
 
                         if spell1_clone.is_some() && spell2_clone.is_some() {
-                            let current_champ_select: serde_json::Value = rest_client
-                                .get(format!(
-                                    "https://127.0.0.1:{}/lol-champ-select/v1/session",
-                                    lockfile.port
-                                ))
-                                .send()
-                                .await
-                                .unwrap()
-                                .json()
-                                .await
-                                .unwrap();
-
-                            let action_response: Vec<SpellData> =
-                                serde_json::from_value(current_champ_select["myTeam"].clone())
-                                    .unwrap();
-                            let filtered_action_data: Vec<SpellData> = action_response
-                                .iter()
-                                .filter(|data| {
-                                    data.cellId == current_champ_select["localPlayerCellId"]
-                                })
-                                .take(1)
-                                .cloned() // Limit to a maximum of 2 matches
-                                .collect();
-                            let extracted_action_data: (u32, u32, String) = filtered_action_data
-                                .iter()
-                                .map(|data| {
-                                    (data.spell1Id, data.spell2Id, data.assignedPosition.clone())
-                                })
-                                .next()
-                                .unwrap();
-                            if extracted_action_data.2.contains("jungle") {
+                            if extracted_team_data.2.contains("jungle") {
                                 if spell1_clone.clone().unwrap() != "Smite".to_string()
-                                    || spell2_clone.clone().unwrap() != "Smite".to_string()
+                                    && spell2_clone.clone().unwrap() != "Smite".to_string()
                                 {
-                                    if extracted_action_data.0 == 4 /*Flash*/ {
-                                        *spell2.lock().unwrap() = Some("Smite".to_owned());
+                                    if extracted_team_data.0 == 4
+                                    /*Flash*/
+                                    {
                                         *spell1.lock().unwrap() = Some("Flash".to_owned());
-                                    } else if extracted_action_data.0 == 6 /*Ghost*/{
                                         *spell2.lock().unwrap() = Some("Smite".to_owned());
-                                        *spell1.lock().unwrap() = Some("Ghost".to_owned());
+                                        continue;
                                     }
-                                    if extracted_action_data.1 == 4 {
+                                    if extracted_team_data.0 == 6
+                                    /*Ghost*/
+                                    {
+                                        *spell1.lock().unwrap() = Some("Ghost".to_owned());
+                                        *spell2.lock().unwrap() = Some("Smite".to_owned());
+                                        continue;
+                                    }
+                                    if extracted_team_data.1 == 4 {
                                         *spell1.lock().unwrap() = Some("Smite".to_owned());
                                         *spell2.lock().unwrap() = Some("Flash".to_owned());
-                                    } else if extracted_action_data.1 == 6 {
+                                        continue;
+                                    }
+                                    if extracted_team_data.1 == 6 {
                                         *spell1.lock().unwrap() = Some("Smite".to_owned());
                                         *spell2.lock().unwrap() = Some("Ghost".to_owned());
-                                    } else {
-                                        *spell1.lock().unwrap() = Some("Smite".to_owned());
+                                        continue;
                                     }
+                                    *spell1.lock().unwrap() = Some("Smite".to_owned());
+                                    continue;
                                 }
                             }
-                            let spell1_clone_updated =
-                                selected_image1_clone.lock().unwrap().clone();
-                            let spell2_clone_updated =
-                                selected_image2_clone.lock().unwrap().clone();
                             let spell1_info = summoner_spells
                                 .iter()
-                                .find(|spell| spell.name == spell1_clone_updated.clone().unwrap())
+                                .find(|spell| spell.name == spell1_clone.clone().unwrap())
                                 .unwrap();
                             let spell2_info = summoner_spells
                                 .iter()
-                                .find(|spell| spell.name == spell2_clone_updated.clone().unwrap())
+                                .find(|spell| spell.name == spell2_clone.clone().unwrap())
                                 .unwrap();
 
                             let body = serde_json::json!({
@@ -1305,10 +1317,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 }
                 Some("EndOfGame") => {
+                    *assigned_position.lock().unwrap() = None;
                     *gameflow_status_clone.lock().unwrap() = "Game Ending...".to_owned();
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
                 Some(unimplemented_phase) => {
+                    *assigned_position.lock().unwrap() = None;
                     *gameflow_status_clone.lock().unwrap() =
                         format!("Unimplemented Phase: {}", unimplemented_phase).to_owned();
                     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
