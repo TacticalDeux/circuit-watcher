@@ -1396,8 +1396,6 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 [[package]]
 name = "league-client-connector"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be2c85f9d501dafee72956384d44fec52ff234814b1ed69357444e84c3852eab"
 dependencies = [
  "base64 0.12.3",
  "regex",

@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hides the terminal
+
 use eframe::egui;
 use egui::{vec2, TextEdit};
 use egui_extras::{self, RetainedImage};

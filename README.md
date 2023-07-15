@@ -3,21 +3,23 @@
 Auto-accept LoL (League of Legends) queue (any).  
 Small project I've been working on (doesn't even have an icon yet) and plan to update and work on more features, although nothing too crazy.  
 There's also probably a whole lot of better ways to do the stuff I'm doing but there's not much to base the project off of and even less in rust.  
-Note that a command window is opened along with the actual GUI because of some random  
-crate that uses the cmd (idk which so can't tell if it's something I can even fix) so it would flash the cmd  
-if I tried to completely hide it, so it's just minimized whenever focused.
 
 ## BUILDING/DOWNLOADING
-
-Should be as easy as doing
 
 ```sh
 git clone https://github.com/TacticalDeuce/circuit-watcher.git
 cd circuit-watcher
-cargo build --release
 ```
 
-or downloading through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases), extracting the folder on your desktop (or somewhere) and running the .exe.
+And download [this fork](https://github.com/sona-voice/rust-lcu-connector) (that fixes the terminal popups) of [league-client-connector](https://crates.io/crates/league-client-connector) and edit the line that says `league-client-connector = { path="" }` to whichever directory the downloaded fork is stored in. It would look something like this:
+
+```toml
+league-client-connector = { path="C:/{User}/Documents/rust-lcu-connector-master" }
+```
+
+You can change the name of the master folder to whatever you want.
+
+Or download through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases), extracting the folder on your desktop (or somewhere) and running the .exe.
 
 ## Features
 
@@ -36,15 +38,16 @@ or downloading through the [release page](https://github.com/TacticalDeuce/circu
 - [X] Champ auto-pick
 - [X] Champ auto-ban
 - [X] Auto summoner spell selection
-- [ ] Persistent settings 
+- [X] GUI
+- [ ] Persistent settings
 - [ ] Pick runes depending on champ auto-locked (might reduce pick alternatives to only one instead of two)
 - [ ] Role check when auto-picking so champs aren't locked/banned if you didn't get main role
 - [ ] Maybe queue rejoining?
-- [X] GUI
 
 ***
 
-Using [eframe/egui](https://github.com/emilk/egui) for all the GUI stuff.
+Using [eframe/egui](https://github.com/emilk/egui) for all the GUI stuff.  
+Using [league-client-connector (rust-lcu-connector fork)](https://github.com/sona-voice/rust-lcu-connector) for getting the port and auth password the LeagueClient uses for HTTP requests.
 
 ***
 
