@@ -47,7 +47,7 @@ Or download through the [release page](https://github.com/TacticalDeuce/circuit-
 ***
 
 Using [eframe/egui](https://github.com/emilk/egui) for all the GUI stuff.  
-Using [league-client-connector (rust-lcu-connector fork)](https://github.com/sona-voice/rust-lcu-connector) for getting the port and auth password the LeagueClient uses for HTTP requests.
+Using [rust-lcu-connector (league-client-connector fork)](https://github.com/sona-voice/rust-lcu-connector) for getting the port and auth password the LeagueClient uses for HTTP requests.
 
 ***
 
