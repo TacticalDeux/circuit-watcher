@@ -38,6 +38,7 @@ pub struct GUI {
     update_status: Arc<Mutex<String>>,
     current_version: Arc<Mutex<String>>,
     asset_name: Arc<Mutex<String>>,
+    active_tab: usize,
 
     update_button_clicked: bool,
     clear_label_timer: Option<std::time::Instant>,
@@ -171,6 +172,7 @@ impl GUI {
             no_icon_img,
             spell_selection: summoner_spell_selection,
             assigned_role: Arc::new(Mutex::new(None)),
+            active_tab: 0,
         }
     }
 }
@@ -268,201 +270,320 @@ impl eframe::App for GUI {
             });
         });
 
+        egui::SidePanel::left("tabs_panel")
+            .resizable(false)
+            .exact_width(96.3)
+            .show(ctx, |ui| {
+                let tabs = ["Game Settings", "Match State"];
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                    for (idx, label) in tabs.iter().enumerate() {
+                        let button = ui.selectable_label(self.active_tab == idx, *label);
+                        if button.clicked() {
+                            self.active_tab = idx;
+                        }
+                    }
+                });
+            });
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Circuit Watcher");
+            match self.active_tab {
+                0 => {
+                    ui.horizontal(|ui| {
+                        if ui.button("Clear Picks/Bans").clicked() {
+                            champion_picks.clear();
+                            *ban_picks = None;
+                            self.clear_label_timer = Some(std::time::Instant::now());
+                        }
+                        if self.clear_label_timer.is_some() {
+                            ui.strong("Picks and bans cleared.");
+                        }
+                    });
 
-            ui.collapsing("App Settings", |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Clear Picks/Bans").clicked() {
-                        champion_picks.clear();
-                        *ban_picks = None;
-                        self.clear_label_timer = Some(std::time::Instant::now());
-                    }
-                    if self.clear_label_timer.is_some() {
-                        ui.strong("Picks and bans cleared.");
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    let spell_selection_label = if self.spell_selection.load(Ordering::SeqCst) {
-                        "Spell Auto Selection: ON"
-                    } else {
-                        "Spell Auto Selection: OFF"
-                    };
-
-                    if ui
-                        .checkbox(
-                            &mut self.spell_selection.load(Ordering::SeqCst),
-                            spell_selection_label,
-                        )
-                        .clicked()
-                    {
-                        let current_state = self.spell_selection.load(Ordering::SeqCst);
-                        self.spell_selection.store(!current_state, Ordering::SeqCst);
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.menu_image_button(
-                        selected_image1
-                            .clone()
-                            .as_ref()
-                            .and_then(|key| self.images.get(key))
-                            .map(|img| img.texture_id(ctx))
-                            .unwrap_or(self.no_icon_img.texture_id(ctx)),
-                        egui::vec2(20.0, 20.0),
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                for (key, image) in &self.images {
-                                    if ui
-                                        .add(egui::ImageButton::new(
-                                            image.texture_id(ctx),
-                                            egui::vec2(17.0, 17.0),
-                                        ))
-                                        .clicked()
-                                    {
-                                        if key == &selected_image2.clone().unwrap_or_default() {
-                                            let temp = selected_image2.clone();
-                                            *selected_image2 = selected_image1.clone();
-                                            *selected_image1 = temp;
-                                        } else {
-                                            *selected_image1 = Some(key.clone());
+                    ui.horizontal(|ui| {
+                        ui.menu_image_button(
+                            selected_image1
+                                .clone()
+                                .as_ref()
+                                .and_then(|key| self.images.get(key))
+                                .map(|img| img.texture_id(ctx))
+                                .unwrap_or(self.no_icon_img.texture_id(ctx)),
+                            egui::vec2(20.0, 20.0),
+                            |ui| {
+                                ui.horizontal(|ui| {
+                                    for (key, image) in &self.images {
+                                        if ui
+                                            .add(egui::ImageButton::new(
+                                                image.texture_id(ctx),
+                                                egui::vec2(17.0, 17.0),
+                                            ))
+                                            .clicked()
+                                        {
+                                            if key == &selected_image2.clone().unwrap_or_default() {
+                                                let temp = selected_image2.clone();
+                                                *selected_image2 = selected_image1.clone();
+                                                *selected_image1 = temp;
+                                            } else {
+                                                *selected_image1 = Some(key.clone());
+                                            }
+                                            ui.close_menu();
                                         }
-                                        ui.close_menu();
+                                    }
+                                });
+                            },
+                        );
+
+                        ui.menu_image_button(
+                            selected_image2
+                                .clone()
+                                .as_ref()
+                                .and_then(|key| self.images.get(key))
+                                .map(|img| img.texture_id(ctx))
+                                .unwrap_or(self.no_icon_img.texture_id(ctx)),
+                            egui::vec2(20.0, 20.0),
+                            |ui| {
+                                ui.horizontal(|ui| {
+                                    for (key, image) in &self.images {
+                                        if ui
+                                            .add(egui::ImageButton::new(
+                                                image.texture_id(ctx),
+                                                egui::vec2(17.0, 17.0),
+                                            ))
+                                            .clicked()
+                                        {
+                                            if key == &selected_image1.clone().unwrap_or_default() {
+                                                let temp = selected_image2.clone();
+                                                *selected_image2 = selected_image1.clone();
+                                                *selected_image1 = temp;
+                                            } else {
+                                                *selected_image2 = Some(key.clone());
+                                            }
+                                            ui.close_menu();
+                                        }
+                                    }
+                                });
+                            },
+                        );
+                    });
+
+                    ui.horizontal(|ui| {
+                        let spell_selection_label = if self.spell_selection.load(Ordering::SeqCst) {
+                            "Spell Auto Selection: ON"
+                        } else {
+                            "Spell Auto Selection: OFF"
+                        };
+
+                        if ui
+                            .checkbox(
+                                &mut self.spell_selection.load(Ordering::SeqCst),
+                                spell_selection_label,
+                            )
+                            .clicked()
+                        {
+                            let current_state = self.spell_selection.load(Ordering::SeqCst);
+                            self.spell_selection.store(!current_state, Ordering::SeqCst);
+                        }
+                    });
+
+                    if (selected_image1.clone().is_none() || selected_image2.clone().is_none())
+                        && self.spell_selection.load(Ordering::SeqCst)
+                    {
+                        ui.strong("Both summoner spells need to be selected");
+                    }
+
+                    ui.horizontal(|ui| {
+                        let auto_accept_label = if self.auto_accept.load(Ordering::SeqCst) {
+                            "Auto Accept: ON"
+                        } else {
+                            "Auto Accept: OFF"
+                        };
+
+                        if ui
+                            .checkbox(
+                                &mut self.auto_accept.load(Ordering::SeqCst),
+                                auto_accept_label,
+                            )
+                            .clicked()
+                        {
+                            let current_state = self.auto_accept.load(Ordering::SeqCst);
+                            self.auto_accept.store(!current_state, Ordering::SeqCst);
+                        }
+                    });
+
+                    // TODO:
+                    // ui.horizontal(|ui| {
+                    //     let rune_page_label = if self.rune_page_selection.load(Ordering::SeqCst) {
+                    //         "Rune Page Change: ON"
+                    //     } else {
+                    //         "Rune Page Change: OFF"
+                    //     };
+
+                    //     if ui
+                    //         .checkbox(
+                    //             &mut self.rune_page_selection.load(Ordering::SeqCst),
+                    //             rune_page_label,
+                    //         )
+                    //         .clicked()
+                    //     {
+                    //         let current_state = self.rune_page_selection.load(Ordering::SeqCst);
+                    //         self.rune_page_selection
+                    //             .store(!current_state, Ordering::SeqCst);
+                    //     }
+                    // });
+
+                    ui.horizontal(|ui| {
+                        let pick_ban_label = if self.pick_ban_selection.load(Ordering::SeqCst) {
+                            "Auto-Pick/Ban: ON"
+                        } else {
+                            "Auto-Pick/Ban: OFF"
+                        };
+
+                        if ui
+                            .checkbox(
+                                &mut self.pick_ban_selection.load(Ordering::SeqCst),
+                                pick_ban_label,
+                            )
+                            .clicked()
+                        {
+                            let current_state = self.pick_ban_selection.load(Ordering::SeqCst);
+                            self.pick_ban_selection
+                                .store(!current_state, Ordering::SeqCst);
+                        }
+                    });
+
+                    ui.vertical(|ui| {
+                        if pick_ban_selection {
+                            if champion_picks.len() < 2 {
+                                ui.label("Enter champions to pick (2 max):");
+                                let text_edit_picks = ui.add(
+                                    TextEdit::singleline(&mut self.pick_text)
+                                        .hint_text("Press enter to skip."),
+                                );
+
+                                if !self.pick_text.is_empty() {
+                                    let pick_text_cleaned = self
+                                        .pick_text
+                                        .trim()
+                                        .replace(" ", "")
+                                        .as_str()
+                                        .replace("'", "")
+                                        .to_lowercase();
+
+                                    let matching_champions: Vec<String> = self
+                                        .champions
+                                        .iter()
+                                        .filter(|champion| {
+                                            champion
+                                                .name
+                                                .to_lowercase()
+                                                .starts_with(&pick_text_cleaned)
+                                        })
+                                        .map(|champion| champion.name.clone())
+                                        .collect();
+
+                                    if !matching_champions.is_empty() {
+                                        ui.push_id("pick suggestion", |ui| {
+                                            // this is done to ensure no id clash
+                                            eframe::egui::ComboBox::from_label("Name Suggestions")
+                                                .selected_text(matching_champions[0].clone())
+                                                .width(ui.available_width() / 3.0)
+                                                .show_ui(ui, |ui| {
+                                                    for suggestion in matching_champions {
+                                                        if ui
+                                                            .selectable_value(
+                                                                &mut self.pick_text,
+                                                                suggestion.clone(),
+                                                                suggestion,
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            text_edit_picks.request_focus();
+                                                        }
+                                                    }
+                                                });
+                                        });
                                     }
                                 }
-                            });
-                        },
-                    );
 
-                    ui.menu_image_button(
-                        selected_image2
-                            .clone()
-                            .as_ref()
-                            .and_then(|key| self.images.get(key))
-                            .map(|img| img.texture_id(ctx))
-                            .unwrap_or(self.no_icon_img.texture_id(ctx)),
-                        egui::vec2(20.0, 20.0),
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                for (key, image) in &self.images {
-                                    if ui
-                                        .add(egui::ImageButton::new(
-                                            image.texture_id(ctx),
-                                            egui::vec2(17.0, 17.0),
-                                        ))
-                                        .clicked()
-                                    {
-                                        if key == &selected_image1.clone().unwrap_or_default() {
-                                            let temp = selected_image2.clone();
-                                            *selected_image2 = selected_image1.clone();
-                                            *selected_image1 = temp;
-                                        } else {
-                                            *selected_image2 = Some(key.clone());
+                                if text_edit_picks.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                {
+                                    let pick_text_cleaned = self
+                                        .pick_text
+                                        .trim()
+                                        .replace(" ", "")
+                                        .as_str()
+                                        .replace("'", "")
+                                        .to_lowercase();
+
+                                    let matching_champion =
+                                        self.champions.iter().find(|champion| {
+                                            champion.name.to_lowercase() == pick_text_cleaned
+                                        });
+
+                                    if !pick_text_cleaned.is_empty() {
+                                        match matching_champion {
+                                            Some(champion) => {
+                                                if champion_picks
+                                                    .contains(&(champion.id, champion.name.clone()))
+                                                {
+                                                    self.text =
+                                                        "Champion has alread been selected."
+                                                            .to_string();
+                                                    self.pick_not_found_label_timer =
+                                                        Some(std::time::Instant::now());
+                                                } else {
+                                                    champion_picks
+                                                        .push((champion.id, champion.name.clone()));
+                                                }
+                                            }
+                                            None => {
+                                                self.text =
+                                                    "No champion found with the given name."
+                                                        .to_string();
+                                                self.pick_not_found_label_timer =
+                                                    Some(std::time::Instant::now());
+                                            }
                                         }
-                                        ui.close_menu();
+                                    } else {
+                                        champion_picks.push((0, "".to_string()));
                                     }
+                                    self.pick_text.clear();
+                                    text_edit_picks.request_focus();
                                 }
-                            });
-                        },
-                    );
-                });
-                if (selected_image1.clone().is_none() || selected_image2.clone().is_none())
-                    && self.spell_selection.load(Ordering::SeqCst)
-                {
-                    ui.strong("Both summoner spells need to be selected");
-                }
+                                if self.pick_not_found_label_timer.is_some() {
+                                    ui.weak(&self.text);
+                                }
+                            }
 
-                ui.horizontal(|ui| {
-                    let auto_accept_label = if self.auto_accept.load(Ordering::SeqCst) {
-                        "Auto Accept: ON"
-                    } else {
-                        "Auto Accept: OFF"
-                    };
+                            if ban_picks.is_none() {
+                                ui.label("Enter champion to ban:");
+                                let text_edit_bans = ui.add(
+                                    TextEdit::singleline(&mut self.ban_text)
+                                        .hint_text("Press enter to skip."),
+                                );
 
-                    if ui
-                        .checkbox(
-                            &mut self.auto_accept.load(Ordering::SeqCst),
-                            auto_accept_label,
-                        )
-                        .clicked()
-                    {
-                        let current_state = self.auto_accept.load(Ordering::SeqCst);
-                        self.auto_accept.store(!current_state, Ordering::SeqCst);
-                    }
-                });
+                                if !self.ban_text.is_empty() {
+                                    let ban_text_cleaned = self
+                                        .ban_text
+                                        .trim()
+                                        .replace(" ", "")
+                                        .as_str()
+                                        .replace("'", "")
+                                        .to_lowercase();
 
-                // TODO:
-                // ui.horizontal(|ui| {
-                //     let rune_page_label = if self.rune_page_selection.load(Ordering::SeqCst) {
-                //         "Rune Page Change: ON"
-                //     } else {
-                //         "Rune Page Change: OFF"
-                //     };
+                                    let matching_champions: Vec<String> = self
+                                        .champions
+                                        .iter()
+                                        .filter(|champion| {
+                                            champion
+                                                .name
+                                                .to_lowercase()
+                                                .starts_with(&ban_text_cleaned)
+                                        })
+                                        .map(|champion| champion.name.clone())
+                                        .collect();
 
-                //     if ui
-                //         .checkbox(
-                //             &mut self.rune_page_selection.load(Ordering::SeqCst),
-                //             rune_page_label,
-                //         )
-                //         .clicked()
-                //     {
-                //         let current_state = self.rune_page_selection.load(Ordering::SeqCst);
-                //         self.rune_page_selection
-                //             .store(!current_state, Ordering::SeqCst);
-                //     }
-                // });
-
-                ui.horizontal(|ui| {
-                    let pick_ban_label = if self.pick_ban_selection.load(Ordering::SeqCst) {
-                        "Auto-Pick/Ban: ON"
-                    } else {
-                        "Auto-Pick/Ban: OFF"
-                    };
-
-                    if ui
-                        .checkbox(
-                            &mut self.pick_ban_selection.load(Ordering::SeqCst),
-                            pick_ban_label,
-                        )
-                        .clicked()
-                    {
-                        let current_state = self.pick_ban_selection.load(Ordering::SeqCst);
-                        self.pick_ban_selection
-                            .store(!current_state, Ordering::SeqCst);
-                    }
-                });
-
-                ui.vertical(|ui| {
-                    if pick_ban_selection {
-                        if champion_picks.len() < 2 {
-                            ui.label("Enter champions to pick (2 max):");
-                            let text_edit_picks = ui.add(
-                                TextEdit::singleline(&mut self.pick_text)
-                                    .hint_text("Press enter to skip."),
-                            );
-
-                            if !self.pick_text.is_empty() {
-                                let pick_text_cleaned = self
-                                    .pick_text
-                                    .trim()
-                                    .replace(" ", "")
-                                    .as_str()
-                                    .replace("'", "")
-                                    .to_lowercase();
-
-                                let matching_champions: Vec<String> = self
-                                    .champions
-                                    .iter()
-                                    .filter(|champion| {
-                                        champion.name.to_lowercase().starts_with(&pick_text_cleaned)
-                                    })
-                                    .map(|champion| champion.name.clone())
-                                    .collect();
-
-                                if !matching_champions.is_empty() {
-                                    ui.push_id("pick suggestion", |ui| {
-                                        // this is done to ensure no id clash
+                                    if !matching_champions.is_empty() {
                                         eframe::egui::ComboBox::from_label("Name Suggestions")
                                             .selected_text(matching_champions[0].clone())
                                             .width(ui.available_width() / 3.0)
@@ -470,217 +591,127 @@ impl eframe::App for GUI {
                                                 for suggestion in matching_champions {
                                                     if ui
                                                         .selectable_value(
-                                                            &mut self.pick_text,
+                                                            &mut self.ban_text,
                                                             suggestion.clone(),
                                                             suggestion,
                                                         )
                                                         .clicked()
                                                     {
-                                                        text_edit_picks.request_focus();
+                                                        text_edit_bans.request_focus();
                                                     }
                                                 }
                                             });
-                                    });
-                                }
-                            }
-
-                            if text_edit_picks.lost_focus()
-                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                            {
-                                let pick_text_cleaned = self
-                                    .pick_text
-                                    .trim()
-                                    .replace(" ", "")
-                                    .as_str()
-                                    .replace("'", "")
-                                    .to_lowercase();
-
-                                let matching_champion = self.champions.iter().find(|champion| {
-                                    champion.name.to_lowercase() == pick_text_cleaned
-                                });
-
-                                if !pick_text_cleaned.is_empty() {
-                                    match matching_champion {
-                                        Some(champion) => {
-                                            if champion_picks
-                                                .contains(&(champion.id, champion.name.clone()))
-                                            {
-                                                self.text = "Champion has alread been selected."
-                                                    .to_string();
-                                                self.pick_not_found_label_timer =
-                                                    Some(std::time::Instant::now());
-                                            } else {
-                                                champion_picks
-                                                    .push((champion.id, champion.name.clone()));
-                                            }
-                                        }
-                                        None => {
-                                            self.text = "No champion found with the given name."
-                                                .to_string();
-                                            self.pick_not_found_label_timer =
-                                                Some(std::time::Instant::now());
-                                        }
                                     }
-                                } else {
-                                    champion_picks.push((0, "".to_string()));
                                 }
-                                self.pick_text.clear();
-                                text_edit_picks.request_focus();
-                            }
-                            if self.pick_not_found_label_timer.is_some() {
-                                ui.weak(&self.text);
-                            }
-                        }
 
-                        if ban_picks.is_none() {
-                            ui.label("Enter champion to ban:");
-                            let text_edit_bans = ui.add(
-                                TextEdit::singleline(&mut self.ban_text)
-                                    .hint_text("Press enter to skip."),
-                            );
+                                if text_edit_bans.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                {
+                                    let ban_text_cleaned = self
+                                        .ban_text
+                                        .trim()
+                                        .replace(" ", "")
+                                        .as_str()
+                                        .replace("'", "")
+                                        .to_lowercase();
 
-                            if !self.ban_text.is_empty() {
-                                let ban_text_cleaned = self
-                                    .ban_text
-                                    .trim()
-                                    .replace(" ", "")
-                                    .as_str()
-                                    .replace("'", "")
-                                    .to_lowercase();
+                                    let matching_champion =
+                                        self.champions.iter().find(|champion| {
+                                            champion.name.to_lowercase() == ban_text_cleaned
+                                        });
 
-                                let matching_champions: Vec<String> = self
-                                    .champions
-                                    .iter()
-                                    .filter(|champion| {
-                                        champion.name.to_lowercase().starts_with(&ban_text_cleaned)
-                                    })
-                                    .map(|champion| champion.name.clone())
-                                    .collect();
-
-                                if !matching_champions.is_empty() {
-                                    eframe::egui::ComboBox::from_label("Name Suggestions")
-                                        .selected_text(matching_champions[0].clone())
-                                        .width(ui.available_width() / 3.0)
-                                        .show_ui(ui, |ui| {
-                                            for suggestion in matching_champions {
-                                                if ui
-                                                    .selectable_value(
-                                                        &mut self.ban_text,
-                                                        suggestion.clone(),
-                                                        suggestion,
-                                                    )
-                                                    .clicked()
+                                    if !ban_text_cleaned.is_empty() {
+                                        match matching_champion {
+                                            Some(champion) => {
+                                                if champion_picks
+                                                    .contains(&(champion.id, champion.name.clone()))
                                                 {
-                                                    text_edit_bans.request_focus();
+                                                    self.text =
+                                                        "Champion has alread been selected."
+                                                            .to_string();
+                                                    self.ban_not_found_label_timer =
+                                                        Some(std::time::Instant::now());
+                                                } else {
+                                                    *ban_picks =
+                                                        Some((champion.id, champion.name.clone()));
                                                 }
                                             }
-                                        });
-                                }
-                            }
-
-                            if text_edit_bans.lost_focus()
-                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                            {
-                                let ban_text_cleaned = self
-                                    .ban_text
-                                    .trim()
-                                    .replace(" ", "")
-                                    .as_str()
-                                    .replace("'", "")
-                                    .to_lowercase();
-
-                                let matching_champion = self.champions.iter().find(|champion| {
-                                    champion.name.to_lowercase() == ban_text_cleaned
-                                });
-
-                                if !ban_text_cleaned.is_empty() {
-                                    match matching_champion {
-                                        Some(champion) => {
-                                            if champion_picks
-                                                .contains(&(champion.id, champion.name.clone()))
-                                            {
-                                                self.text = "Champion has alread been selected."
-                                                    .to_string();
+                                            None => {
+                                                self.text =
+                                                    "No champion found with the given name."
+                                                        .to_string();
                                                 self.ban_not_found_label_timer =
                                                     Some(std::time::Instant::now());
-                                            } else {
-                                                *ban_picks =
-                                                    Some((champion.id, champion.name.clone()));
                                             }
                                         }
-                                        None => {
-                                            self.text = "No champion found with the given name."
-                                                .to_string();
-                                            self.ban_not_found_label_timer =
-                                                Some(std::time::Instant::now());
-                                        }
+                                    } else {
+                                        *ban_picks = Some((
+                                            0,
+                                            self.ban_text
+                                                .trim()
+                                                .replace(" ", "")
+                                                .as_str()
+                                                .replace("'", "")
+                                                .to_string()
+                                                .to_lowercase(),
+                                        ));
                                     }
+                                    self.ban_text.clear();
+                                    text_edit_bans.request_focus();
+                                }
+                                if self.ban_not_found_label_timer.is_some() {
+                                    ui.weak(&self.text);
+                                }
+                            }
+                        }
+                        if pick_ban_selection {
+                            if champion_picks.len() == 2
+                                && champion_picks.get(0).unwrap().1.is_empty()
+                                && ban_picks.is_some()
+                                && ban_picks.as_ref().unwrap().1.is_empty()
+                                && champion_picks.get(1).unwrap().1.is_empty()
+                            {
+                                champion_picks.clear();
+                                *ban_picks = None;
+                                self.pick_ban_selection.store(false, Ordering::SeqCst);
+                            }
+                            if champion_picks.len() != 0 {
+                                ui.strong("Picks:");
+                                for (id, name) in &*champion_picks {
+                                    if !name.is_empty() {
+                                        ui.label(format!("ID:{id} Name:\"{name}\""));
+                                    } else {
+                                        ui.label("None");
+                                    }
+                                }
+                            }
+                            if ban_picks.is_some() {
+                                ui.strong("Ban:");
+                                if ban_picks.as_ref().unwrap().1.is_empty() {
+                                    ui.label("None");
                                 } else {
-                                    *ban_picks = Some((
-                                        0,
-                                        self.ban_text
-                                            .trim()
-                                            .replace(" ", "")
-                                            .as_str()
-                                            .replace("'", "")
-                                            .to_string()
-                                            .to_lowercase(),
+                                    ui.label(format!(
+                                        "ID:{} Name:\"{}\"",
+                                        &ban_picks.as_ref().unwrap().0,
+                                        &ban_picks.as_ref().unwrap().1
                                     ));
                                 }
-                                self.ban_text.clear();
-                                text_edit_bans.request_focus();
-                            }
-                            if self.ban_not_found_label_timer.is_some() {
-                                ui.weak(&self.text);
                             }
                         }
-                    }
-                    if pick_ban_selection {
-                        if champion_picks.len() == 2
-                            && champion_picks.get(0).unwrap().1.is_empty()
-                            && ban_picks.is_some()
-                            && ban_picks.as_ref().unwrap().1.is_empty()
-                            && champion_picks.get(1).unwrap().1.is_empty()
-                        {
-                            champion_picks.clear();
-                            *ban_picks = None;
-                            self.pick_ban_selection.store(false, Ordering::SeqCst);
-                        }
-                        if champion_picks.len() != 0 {
-                            ui.strong("Picks:");
-                            for (id, name) in &*champion_picks {
-                                if !name.is_empty() {
-                                    ui.label(format!("ID:{id} Name:\"{name}\""));
-                                } else {
-                                    ui.label("None");
-                                }
-                            }
-                        }
-                        if ban_picks.is_some() {
-                            ui.strong("Ban:");
-                            if ban_picks.as_ref().unwrap().1.is_empty() {
-                                ui.label("None");
-                            } else {
-                                ui.label(format!(
-                                    "ID:{} Name:\"{}\"",
-                                    &ban_picks.as_ref().unwrap().0,
-                                    &ban_picks.as_ref().unwrap().1
-                                ));
-                            }
-                        }
-                    }
-                });
-            });
-
-            ui.collapsing("Match State", |ui| {
-                ui.heading(format!("{}", gameflow_status.clone()));
-                if let Some(assigned_role) = self.assigned_role.lock().unwrap().clone() {
-                    ui.label(format!("Role: {}", assigned_role));
+                    });
                 }
-            });
+                1 => {
+                    ui.heading(format!("{}", gameflow_status.clone()));
+                    if let Some(assigned_role) = self.assigned_role.lock().unwrap().clone() {
+                        ui.label(format!("Role: {}", assigned_role));
+                    }
+                }
+                2 => {}
+                _ => unreachable!(),
+            }
 
             ui.vertical_centered_justified(|ui| {
-                ui.add_space(ui.available_size().y - ui.spacing().item_spacing.y * 8.5);
+                ui.add_space(ui.available_size().y - ui.spacing().item_spacing.y * 11.0);
                 ui.weak(update_status);
                 if let Some(status) = connection_status.clone() {
                     ui.weak(status.clone());
@@ -755,6 +786,8 @@ fn image_loader(img_name: &str, img_bytes: &[u8]) -> (String, RetainedImage) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let options = eframe::NativeOptions {
+        // icon_data: None,
+        min_window_size: Some(vec2(330.0, 320.0)),
         initial_window_size: Some(egui::vec2(500.0, 400.0)),
         ..Default::default()
     };
