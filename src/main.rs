@@ -272,20 +272,22 @@ impl eframe::App for GUI {
 
         egui::SidePanel::left("tabs_panel")
             .resizable(false)
-            .exact_width(96.3)
+            .exact_width(78.0)
             .show(ctx, |ui| {
-                let tabs = ["Game Settings", "Match State"];
-                ui.with_layout(
-                    egui::Layout::top_down_justified(egui::Align::Center),
-                    |ui| {
-                        for (idx, label) in tabs.iter().enumerate() {
-                            let button = ui.selectable_label(self.active_tab == idx, *label);
+                let tabs = ["Settings", "Match State"];
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                    for (idx, label) in tabs.iter().enumerate() {
+                        let button = ui.button(*label);
+
+                        if self.active_tab != idx {
                             if button.clicked() {
                                 self.active_tab = idx;
                             }
+                        } else {
+                            button.highlight();
                         }
-                    },
-                );
+                    }
+                });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
