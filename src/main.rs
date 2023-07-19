@@ -275,14 +275,17 @@ impl eframe::App for GUI {
             .exact_width(96.3)
             .show(ctx, |ui| {
                 let tabs = ["Game Settings", "Match State"];
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                    for (idx, label) in tabs.iter().enumerate() {
-                        let button = ui.selectable_label(self.active_tab == idx, *label);
-                        if button.clicked() {
-                            self.active_tab = idx;
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        for (idx, label) in tabs.iter().enumerate() {
+                            let button = ui.selectable_label(self.active_tab == idx, *label);
+                            if button.clicked() {
+                                self.active_tab = idx;
+                            }
                         }
-                    }
-                });
+                    },
+                );
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -1090,252 +1093,243 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
 
-                    if pick_ban_selection {
-                        *gameflow_status_clone.lock().unwrap() =
-                            "Champion Selection with Auto-pick/ban ON".to_owned();
+                    if !pick_ban_selection {
+                        *gameflow_status_clone.lock().unwrap() = "Champion Selection".to_owned();
+                        continue;
+                    }
 
-                        if champion_picks.len() == 0 && ban_picks.is_none() {
-                            continue;
-                        }
+                    *gameflow_status_clone.lock().unwrap() =
+                        "Champion Selection with Auto-pick/ban ON".to_owned();
 
-                        let current_champ_select: serde_json::Value = rest_client
-                            .get(format!(
-                                "https://127.0.0.1:{}/lol-champ-select/v1/session",
-                                lockfile.port
-                            ))
-                            .send()
-                            .await
-                            .unwrap()
-                            .json()
-                            .await
-                            .unwrap();
+                    if champion_picks.len() == 0 && ban_picks.is_none() {
+                        continue;
+                    }
 
-                        let action_response: Vec<Vec<ActionResponseData>> =
-                            serde_json::from_value(current_champ_select["actions"].clone())
-                                .unwrap();
-                        let filtered_action_data: Vec<ActionResponseData> = action_response
+                    let current_champ_select: serde_json::Value = rest_client
+                        .get(format!(
+                            "https://127.0.0.1:{}/lol-champ-select/v1/session",
+                            lockfile.port
+                        ))
+                        .send()
+                        .await
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+
+                    let action_response: Vec<Vec<ActionResponseData>> =
+                        serde_json::from_value(current_champ_select["actions"].clone()).unwrap();
+                    let filtered_action_data: Vec<ActionResponseData> = action_response
+                        .iter()
+                        .flatten()
+                        .filter(|data| {
+                            data.actorCellId == current_champ_select["localPlayerCellId"]
+                        })
+                        .take(2) // Limit to a maximum of 2 matches
+                        .cloned()
+                        .collect();
+                    let extracted_action_data: Vec<(i32, bool, String, bool)> =
+                        filtered_action_data
                             .iter()
-                            .flatten()
-                            .filter(|data| {
-                                data.actorCellId == current_champ_select["localPlayerCellId"]
+                            .map(|data| {
+                                (
+                                    data.id,
+                                    data.isInProgress,
+                                    data.r#type.clone(),
+                                    data.completed,
+                                )
                             })
-                            .take(2) // Limit to a maximum of 2 matches
-                            .cloned()
                             .collect();
-                        let extracted_action_data: Vec<(i32, bool, String, bool)> =
-                            filtered_action_data
-                                .iter()
-                                .map(|data| {
-                                    (
-                                        data.id,
-                                        data.isInProgress,
-                                        data.r#type.clone(),
-                                        data.completed,
-                                    )
-                                })
-                                .collect();
 
-                        let (ban_id, ban_is_in_progress, _type1, ban_completed) =
-                            extracted_action_data.get(0).cloned().unwrap_or((
-                                0,
-                                false,
-                                "".to_string(),
-                                false,
-                            ));
-                        let (pick_id, pick_is_in_progress, _type2, pick_completed) =
-                            extracted_action_data.get(1).cloned().unwrap_or((
-                                0,
-                                false,
-                                "".to_string(),
-                                false,
-                            ));
+                    let (ban_id, ban_is_in_progress, _type1, ban_completed) = extracted_action_data
+                        .get(0)
+                        .cloned()
+                        .unwrap_or((0, false, "".to_string(), false));
+                    let (pick_id, pick_is_in_progress, _type2, pick_completed) =
+                        extracted_action_data.get(1).cloned().unwrap_or((
+                            0,
+                            false,
+                            "".to_string(),
+                            false,
+                        ));
 
-                        if ban_picks.is_some() {
-                            if !ban_picks.as_ref().unwrap().1.is_empty() {
-                                let ban_body = serde_json::json!({
-                                        "actorCellId": current_champ_select["localPlayerCellId"],
-                                        "championId": &ban_picks.as_ref().unwrap().0,
-                                        "completed": true,
-                                        "id": &ban_id,
-                                        "isAllyAction": true,
-                                        "type": "ban"
-                                });
-                                let ban_champ_info: serde_json::Value = rest_client
-                                    .get(format!(
+                    if ban_picks.is_some() {
+                        if !ban_picks.as_ref().unwrap().1.is_empty() {
+                            let ban_body = serde_json::json!({
+                                    "actorCellId": current_champ_select["localPlayerCellId"],
+                                    "championId": &ban_picks.as_ref().unwrap().0,
+                                    "completed": true,
+                                    "id": &ban_id,
+                                    "isAllyAction": true,
+                                    "type": "ban"
+                            });
+                            let ban_champ_info: serde_json::Value = rest_client
+                                .get(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
                                     lockfile.port,
                                     &ban_picks.as_ref().unwrap().0
                                 ))
-                                    .send()
-                                    .await
-                                    .unwrap()
-                                    .json()
-                                    .await
-                                    .unwrap();
+                                .send()
+                                .await
+                                .unwrap()
+                                .json()
+                                .await
+                                .unwrap();
 
-                                if ban_is_in_progress
-                                    && !ban_completed
-                                    && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
-                                        != true
-                                    && current_champ_select["timer"]["phase"] != "PLANNING"
-                                {
-                                    rest_client
-                                        .patch(format!(
+                            if ban_is_in_progress
+                                && !ban_completed
+                                && ban_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
+                                    != true
+                                && current_champ_select["timer"]["phase"] != "PLANNING"
+                            {
+                                rest_client
+                                    .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
                                     lockfile.port, ban_id
                                 ))
-                                        .json(&ban_body)
-                                        .send()
-                                        .await
-                                        .unwrap();
-                                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                                }
-                            }
-                        }
-
-                        if champion_picks.len() != 0 {
-                            if champion_picks.get(0).unwrap().1.is_empty()
-                                && champion_picks.get(1).unwrap().1.is_empty()
-                            {
-                                continue;
-                            }
-                            if !champion_picks.get(0).unwrap().1.is_empty() {
-                                let pick_champ_info: serde_json::Value = rest_client
-                                    .get(format!(
-                                "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                                lockfile.port, champion_picks.get(0).unwrap().0
-                            ))
+                                    .json(&ban_body)
                                     .send()
                                     .await
-                                    .unwrap()
-                                    .json()
-                                    .await
                                     .unwrap();
-
-                                let pick_body = serde_json::json!({
-                                        "actorCellId": current_champ_select["localPlayerCellId"],
-                                        "championId": champion_picks.get(0).unwrap().0,
-                                        "completed": true,
-                                        "id": &pick_id,
-                                        "isAllyAction": true,
-                                        "type": "pick"
-                                });
-
-                                if !pick_is_in_progress
-                                    && pick_completed
-                                    && !ban_is_in_progress
-                                    && ban_completed
-                                    || current_champ_select["timer"]["phase"] == "PLANNING"
-                                {
-                                    continue;
-                                }
-
-                                if !pick_is_in_progress {
-                                    continue;
-                                }
-                                if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
-                                    != true
-                                {
-                                    if pick_is_in_progress
-                                        && !pick_completed
-                                        && !ban_is_in_progress
-                                        && ban_completed
-                                        && pick_champ_info["selectionStatus"]
-                                            ["pickedByOtherOrBanned"]
-                                            != true
-                                        && !locked_champ
-                                    {
-                                        if rune_change {
-                                            // TODO:
-                                        }
-                                        rest_client
-                                            .patch(format!(
-                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, pick_id
-                                ))
-                                            .json(&pick_body)
-                                            .send()
-                                            .await
-                                            .unwrap();
-                                        locked_champ = true;
-                                        tokio::time::sleep(tokio::time::Duration::from_secs(1))
-                                            .await;
-                                    }
-                                }
-                            }
-
-                            if champion_picks.len() == 1 {
-                                continue;
-                            }
-
-                            if !champion_picks.get(1).unwrap().1.is_empty() {
-                                let pick_champ_info: serde_json::Value = rest_client
-                                    .get(format!(
-                                "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                                lockfile.port, champion_picks.get(1).unwrap().0
-                            ))
-                                    .send()
-                                    .await
-                                    .unwrap()
-                                    .json()
-                                    .await
-                                    .unwrap();
-
-                                let pick_body = serde_json::json!({
-                                        "actorCellId": current_champ_select["localPlayerCellId"],
-                                        "championId": champion_picks.get(1).unwrap().0,
-                                        "completed": true,
-                                        "id": &pick_id,
-                                        "isAllyAction": true,
-                                        "type": "pick"
-                                });
-
-                                if !pick_is_in_progress
-                                    && pick_completed
-                                    && !ban_is_in_progress
-                                    && ban_completed
-                                    || current_champ_select["timer"]["phase"] == "PLANNING"
-                                {
-                                    continue;
-                                }
-
-                                if !pick_is_in_progress {
-                                    continue;
-                                }
-                                if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
-                                    != true
-                                {
-                                    if pick_is_in_progress
-                                        && !pick_completed
-                                        && !ban_is_in_progress
-                                        && ban_completed
-                                        && pick_champ_info["selectionStatus"]
-                                            ["pickedByOtherOrBanned"]
-                                            != true
-                                        && !locked_champ
-                                    {
-                                        if rune_change {
-                                            // TODO:
-                                        }
-                                        rest_client
-                                            .patch(format!(
-                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, pick_id
-                                ))
-                                            .json(&pick_body)
-                                            .send()
-                                            .await
-                                            .unwrap();
-                                        locked_champ = true;
-                                        tokio::time::sleep(tokio::time::Duration::from_secs(1))
-                                            .await;
-                                    }
-                                }
+                                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                             }
                         }
                     }
 
-                    *gameflow_status_clone.lock().unwrap() = "Champion Selection".to_owned();
+                    if champion_picks.len() != 0 {
+                        if champion_picks.get(0).unwrap().1.is_empty()
+                            && champion_picks.get(1).unwrap().1.is_empty()
+                        {
+                            continue;
+                        }
+                        if !champion_picks.get(0).unwrap().1.is_empty() {
+                            let pick_champ_info: serde_json::Value = rest_client
+                                .get(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
+                                    lockfile.port,
+                                    champion_picks.get(0).unwrap().0
+                                ))
+                                .send()
+                                .await
+                                .unwrap()
+                                .json()
+                                .await
+                                .unwrap();
+
+                            let pick_body = serde_json::json!({
+                                    "actorCellId": current_champ_select["localPlayerCellId"],
+                                    "championId": champion_picks.get(0).unwrap().0,
+                                    "completed": true,
+                                    "id": &pick_id,
+                                    "isAllyAction": true,
+                                    "type": "pick"
+                            });
+
+                            if !pick_is_in_progress
+                                && pick_completed
+                                && !ban_is_in_progress
+                                && ban_completed
+                                || current_champ_select["timer"]["phase"] == "PLANNING"
+                            {
+                                continue;
+                            }
+
+                            if !pick_is_in_progress {
+                                continue;
+                            }
+                            if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true {
+                                if pick_is_in_progress
+                                    && !pick_completed
+                                    && !ban_is_in_progress
+                                    && ban_completed
+                                    && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
+                                        != true
+                                    && !locked_champ
+                                {
+                                    if rune_change {
+                                        // TODO:
+                                    }
+                                    rest_client
+                                        .patch(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
+                                    lockfile.port, pick_id
+                                ))
+                                        .json(&pick_body)
+                                        .send()
+                                        .await
+                                        .unwrap();
+                                    locked_champ = true;
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                                }
+                            }
+                        }
+
+                        if champion_picks.len() == 1 {
+                            continue;
+                        }
+
+                        if !champion_picks.get(1).unwrap().1.is_empty() {
+                            let pick_champ_info: serde_json::Value = rest_client
+                                .get(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
+                                    lockfile.port,
+                                    champion_picks.get(1).unwrap().0
+                                ))
+                                .send()
+                                .await
+                                .unwrap()
+                                .json()
+                                .await
+                                .unwrap();
+
+                            let pick_body = serde_json::json!({
+                                    "actorCellId": current_champ_select["localPlayerCellId"],
+                                    "championId": champion_picks.get(1).unwrap().0,
+                                    "completed": true,
+                                    "id": &pick_id,
+                                    "isAllyAction": true,
+                                    "type": "pick"
+                            });
+
+                            if !pick_is_in_progress
+                                && pick_completed
+                                && !ban_is_in_progress
+                                && ban_completed
+                                || current_champ_select["timer"]["phase"] == "PLANNING"
+                            {
+                                continue;
+                            }
+
+                            if !pick_is_in_progress {
+                                continue;
+                            }
+                            if pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"] != true {
+                                if pick_is_in_progress
+                                    && !pick_completed
+                                    && !ban_is_in_progress
+                                    && ban_completed
+                                    && pick_champ_info["selectionStatus"]["pickedByOtherOrBanned"]
+                                        != true
+                                    && !locked_champ
+                                {
+                                    if rune_change {
+                                        // TODO:
+                                    }
+                                    rest_client
+                                        .patch(format!(
+                                    "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
+                                    lockfile.port, pick_id
+                                ))
+                                        .json(&pick_body)
+                                        .send()
+                                        .await
+                                        .unwrap();
+                                    locked_champ = true;
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                                }
+                            }
+                        }
+                    }
                 }
                 Some("InProgress") => {
                     *gameflow_status_clone.lock().unwrap() = "Game in progress...".to_owned();
