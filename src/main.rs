@@ -275,19 +275,22 @@ impl eframe::App for GUI {
             .exact_width(78.0)
             .show(ctx, |ui| {
                 let tabs = ["Settings", "Match State"];
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                    for (idx, label) in tabs.iter().enumerate() {
-                        let button = ui.button(*label);
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        for (idx, label) in tabs.iter().enumerate() {
+                            let button = ui.button(*label);
 
-                        if self.active_tab != idx {
-                            if button.clicked() {
-                                self.active_tab = idx;
+                            if self.active_tab != idx {
+                                if button.clicked() {
+                                    self.active_tab = idx;
+                                }
+                            } else {
+                                button.highlight();
                             }
-                        } else {
-                            button.highlight();
                         }
-                    }
-                });
+                    },
+                );
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -862,7 +865,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
             }
-            match LeagueClientConnector::parse_lockfile() {
+            match LeagueClientConnector::parse_raw_info() {
                 Ok(lockfile) => {
                     let mut status = connection_status.lock().unwrap();
                     *status = Some(format!(
@@ -903,9 +906,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
-        let mut lockfile = LeagueClientConnector::parse_lockfile().unwrap();
+        let mut lc_info = LeagueClientConnector::parse_raw_info().unwrap();
         let mut auth_header =
-            HeaderValue::from_str(format!("Basic {}", lockfile.b64_auth).as_str()).unwrap();
+            HeaderValue::from_str(format!("Basic {}", lc_info.b64_auth).as_str()).unwrap();
         let cert =
             reqwest::Certificate::from_pem(include_bytes!("../utils/riotgames.pem")).unwrap();
         let mut headers = header::HeaderMap::new();
@@ -932,11 +935,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .unwrap()
                 .contains("LeagueClient not found, may be closed.")
             {
-                match LeagueClientConnector::parse_lockfile() {
+                match LeagueClientConnector::parse_raw_info() {
                     Ok(riotlockfile) => {
-                        lockfile = riotlockfile;
+                        lc_info = riotlockfile;
                         auth_header =
-                            HeaderValue::from_str(format!("Basic {}", lockfile.b64_auth).as_str())
+                            HeaderValue::from_str(format!("Basic {}", lc_info.b64_auth).as_str())
                                 .unwrap();
                         headers = header::HeaderMap::new();
 
@@ -970,7 +973,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let gameflow: serde_json::Value = rest_client
                 .get(format!(
                     "https://127.0.0.1:{}/lol-gameflow/v1/session",
-                    lockfile.port
+                    lc_info.port
                 ))
                 .send()
                 .await
@@ -996,7 +999,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         rest_client
                             .post(format!(
                                 "https://127.0.0.1:{}/lol-matchmaking/v1/ready-check/accept",
-                                lockfile.port
+                                lc_info.port
                             ))
                             .send()
                             .await
@@ -1008,7 +1011,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let current_champ_select: serde_json::Value = rest_client
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/session",
-                            lockfile.port
+                            lc_info.port
                         ))
                         .send()
                         .await
@@ -1086,7 +1089,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             rest_client
                                 .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/my-selection",
-                                    lockfile.port
+                                    lc_info.port
                                 ))
                                 .json(&body)
                                 .send()
@@ -1110,7 +1113,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let current_champ_select: serde_json::Value = rest_client
                         .get(format!(
                             "https://127.0.0.1:{}/lol-champ-select/v1/session",
-                            lockfile.port
+                            lc_info.port
                         ))
                         .send()
                         .await
@@ -1168,7 +1171,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             let ban_champ_info: serde_json::Value = rest_client
                                 .get(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                                    lockfile.port,
+                                    lc_info.port,
                                     &ban_picks.as_ref().unwrap().0
                                 ))
                                 .send()
@@ -1187,7 +1190,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 rest_client
                                     .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, ban_id
+                                    lc_info.port, ban_id
                                 ))
                                     .json(&ban_body)
                                     .send()
@@ -1208,7 +1211,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             let pick_champ_info: serde_json::Value = rest_client
                                 .get(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                                    lockfile.port,
+                                    lc_info.port,
                                     champion_picks.get(0).unwrap().0
                                 ))
                                 .send()
@@ -1254,7 +1257,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     rest_client
                                         .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, pick_id
+                                    lc_info.port, pick_id
                                 ))
                                         .json(&pick_body)
                                         .send()
@@ -1274,7 +1277,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             let pick_champ_info: serde_json::Value = rest_client
                                 .get(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/grid-champions/{}",
-                                    lockfile.port,
+                                    lc_info.port,
                                     champion_picks.get(1).unwrap().0
                                 ))
                                 .send()
@@ -1320,7 +1323,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     rest_client
                                         .patch(format!(
                                     "https://127.0.0.1:{}/lol-champ-select/v1/session/actions/{}",
-                                    lockfile.port, pick_id
+                                    lc_info.port, pick_id
                                 ))
                                         .json(&pick_body)
                                         .send()
