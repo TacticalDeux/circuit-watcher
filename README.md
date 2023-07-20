@@ -6,18 +6,19 @@ There's also probably a whole lot of better ways to do the stuff I'm doing but t
 
 ## BUILDING/DOWNLOADING
 
+Building currently not possible as I'm using a locally modified version of the rust-lcu-connector crate. Will be updated later.
 ```sh
 git clone https://github.com/TacticalDeuce/circuit-watcher.git
 cd circuit-watcher
 ```
 
-And download [this fork](https://github.com/sona-voice/rust-lcu-connector) (that fixes the terminal popups) of [league-client-connector](https://crates.io/crates/league-client-connector) and edit the line that says `league-client-connector = { path="" }` to whichever directory the downloaded fork is stored in. It would look something like this:
+~~And download [this fork](https://github.com/sona-voice/rust-lcu-connector) (that fixes the terminal popups) of [league-client-connector](https://crates.io/crates/league-client-connector) and edit the line that says `league-client-connector = { path="" }` to whichever directory the downloaded fork is stored in. It would look something like this:~~
 
 ```toml
 league-client-connector = { path="C:/{User}/Documents/rust-lcu-connector-master" }
 ```
 
-You can change the name of the master folder to whatever you want.
+~~You can change the name of the master folder to whatever you want.~~
 
 Or download through the [release page](https://github.com/TacticalDeuce/circuit-watcher/releases), extracting the folder on your desktop (or somewhere) and running the .exe.
 
